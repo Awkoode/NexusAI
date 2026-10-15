@@ -48,12 +48,80 @@ Esta versão adiciona o **Data Workspace: upload de CSV, armazenamento privado e
 | **Páginas** | ✅ | Detalhe do projeto (`/projects/[projectId]`) e do dataset (`/projects/[projectId]/datasets/[datasetId]`) |
 | **Testes** | ✅ | 14 testes de CSV/perfil + 11 testes de endpoints de datasets (total: 42 na API) |
 
+## ✅ Fase 6 — Implementada
+
+Processamento assíncrono real com **Redis + BullMQ**: operações demoradas viram jobs persistentes
+executados por um worker separado, com retry, cancelamento e acompanhamento no frontend.
+
+| Componente | Status | Detalhes |
+|------------|--------|----------|
+| **Tabela `jobs`** | ✅ | Migração `005_jobs.sql`: tipo, estado, parâmetros, progresso real por estágio, resultado, erro sanitizado, tentativas, RLS por usuário |
+| **Fila BullMQ** | ✅ | Fila `nexusai-analytics` (bullmq@4 + ioredis@5); jobId determinístico `job:<uuid>` — re-enfileirar nunca duplica |
+| **Tipos de job** | ✅ | `dataset.profile`, `ml.train`, `analysis.describe/correlation/covariance/linear-algebra/compare` — payload só com IDs + parâmetros validados |
+| **Worker separado** | ✅ | `npm run worker` (processo próprio); concorrência configurável; retry com backoff exponencial só para falhas transitórias (`UnrecoverableError` pula retry); timeouts dos serviços; logs com IDs de correlação; shutdown gracioso; recuperação de jobs órfãos no boot |
+| **API de jobs** | ✅ | `POST /jobs` → 202, `GET /jobs` (filtros + paginação), `GET /jobs/:id`, `POST /jobs/:id/cancel`; sync preservado |
+| **Cancelamento** | ✅ | `queued` → removido da fila; `active` → flag cooperativa (resultado nunca publicado após cancelamento confirmado); terminais rejeitam com 400 |
+| **Frontend** | ✅ | Modo "background" no AnalysisPanel, polling com backoff que para em estado terminal, barra de progresso por estágio real, cancelamento, histórico paginado (JobsPanel) |
+| **Testes** | ✅ | Unitários (validação, auth, cancelamento) + integração com Redis+BullMQ reais |
+
+## ✅ Fase 8 — Implementada
+
+Dashboard avançado, visualizações e polimento de produto — experiência SaaS completa.
+
+| Componente | Status | Detalhes |
+|------------|--------|----------|
+| **Sistema de Design** | ✅ | Tokens (cores, tipografia, espaçamento, bordas, sombras, foco), componentes padronizados: Botões, Inputs, Selects, Cards, Modais, Badges, Tabelas, Tooltips, Skeletons, Empty States, Pagination, Breadcrumbs |
+| **Navegação** | ✅ | Sidebar fixa desktop / drawer mobile (`AppShell`), links ativos, breadcrumbs, skip-to-content, autenticação integrada |
+| **Dashboard Principal** | ✅ | Métricas reais via fan-out (`projects`, `datasets`, `experiments`, `jobs`), gráfico de barras de execuções por estado, listas recentes (jobs, experimentos, análises), degradação parcial honesta quando falha fonte |
+| **Página de Projetos** | ✅ | Listagem com cards, busca/filtro implícito, criação/edição/exclusão via modal, estados vazios, confirmação destrutiva |
+| **Exploração de Datasets** | ✅ | Metadados, preview paginado, estatísticas por coluna, missing-values chart, top categorias, histograma amostral, **scatter plot** (até 500 pts, divulga amostragem), **matriz de correlação** (sample, cores divergentes), aviso de limitações |
+| **Dashboard ML** | ✅ | Cards de métricas (MAE/RMSE/R² ou Acc/Prec/Rec/F1), **ConfusionHeatmap** acessível (cores redundantes com valores), **RunsComparison** (ranking por R² ou F1 apenas, nunca mistura tarefas), histórico de runs, detalhes de execução |
+| **Análises Estatísticas / Julia** | ✅ | Estatísticas descritivas, correlações, covariâncias, álgebra linear, comparação Python×Julia com flags de concordância, histórico |
+| **Central de Execuções (Jobs)** | ✅ | `/jobs` — listagem paginada, tipo, projeto, estado, duração, erro sanitizado, cancelamento, polling controlado (usa hook `useJobPolling`) |
+| **Central de Insights IA** | ✅ | Seção no dashboard (explica que camada IA não conectada; diferencia métricas calculadas de interpretação futura) |
+| **Gráficos** | ✅ | Tooltips, legendas, eixos legíveis, formatação consistente, estados vazios, tratamento de nulos, responsivo, cores consistentes, acessibilidade (não dependem só de cor) |
+| **Responsividade / Acessibilidade** | ✅ | Sidebar drawer, tabelas com overflow, gráficos redimensionam, modais mobile, labels, foco visível, contraste, skip link, `prefers-reduced-motion` |
+| **Estados de Interface** | ✅ | Loading (skeletons), erro (alert com retry), vazio (EmptyState com ação), auth expirado, sem permissão, operação em andamento |
+| **Testes / Build** | ✅ | Typecheck, lint, build, testes de API (69) + shared (5) todos passam |
+
 ## 🏗️ Arquitetura
 
 ```
 nexusai/
 ├── apps/
 │   ├── web/           # Next.js 14 (App Router) - Frontend
+│   │   ├── src/
+│   │   │   ├── app/           # Rotas (App Router)
+│   │   │   │   ├── page.tsx                    # Landing / Dashboard
+│   │   │   │   ├── jobs/page.tsx               # Central de execuções
+│   │   │   │   ├── projects/page.tsx           # Lista de projetos
+│   │   │   │   ├── projects/[projectId]/page.tsx           # Detalhe do projeto
+│   │   │   │   ├── projects/[projectId]/datasets/[datasetId]/page.tsx  # Dataset
+│   │   │   │   ├── projects/[projectId]/experiments/[experimentId]/page.tsx  # Experimento
+│   │   │   │   └── auth/                       # Login, signup, password reset
+│   │   │   ├── components/
+│   │   │   │   ├── AppShell.tsx                # Layout autenticado (sidebar/drawer)
+│   │   │   │   ├── Navigation.tsx              # Header público (landing/auth)
+│   │   │   │   ├── ui.tsx                      # Componentes base (StatCard, StatusBadge, Skeleton, Breadcrumbs, Pagination, ErrorAlert)
+│   │   │   │   ├── ScatterPlot.tsx             # Scatter plot com divulgação de amostragem
+│   │   │   │   ├── ConfusionHeatmap.tsx        # Matriz de confusão acessível
+│   │   │   │   ├── RunsComparison.tsx          # Comparação de runs por tarefa
+│   │   │   │   ├── JobsPanel.tsx               # Histórico de jobs com paginação/cancelamento
+│   │   │   │   ├── AnalysisPanel.tsx           # Painel de análises (sync + background)
+│   │   │   │   ├── ProjectCard.tsx             # Card de projeto
+│   │   │   │   ├── ProjectForm.tsx             # Modal de criação/edição de projeto
+│   │   │   │   ├── UploadDatasetModal.tsx      # Modal de upload de CSV
+│   │   │   │   ├── ExperimentFormModal.tsx     # Modal de criação de experimento
+│   │   │   │   ├── DeleteConfirmModal.tsx      # Confirmação de exclusão
+│   │   │   │   └── EmptyState.tsx              # Estado vazio com ação opcional
+│   │   │   ├── context/AuthContext.tsx         # Provê usuário + signOut
+│   │   │   ├── lib/
+│   │   │   │   ├── api.ts                      # Cliente API tipado (fetch wrapper)
+│   │   │   │   ├── format.ts                   # Helpers de formatação compartilhados
+│   │   │   │   ├── charts.ts                   # Builders puros de dados de gráficos (testáveis)
+│   │   │   │   ├── useDashboardData.ts         # Hook de agregação do dashboard
+│   │   │   │   └── useJobPolling.ts            # Polling com backoff para jobs
+│   │   │   └── styles/globals.css              # Tailwind + design tokens
 │   └── api/           # Express + TypeScript - Backend API
 ├── packages/
 │   └── shared/        # Tipos e contratos TypeScript compartilhados
@@ -180,6 +248,15 @@ Isso criará as tabelas `profiles` e `projects` com as políticas de Row Level S
 
 > **Importante**: Apenas variáveis com prefixo `NEXT_PUBLIC_` são expostas ao navegador. Nunca coloque segredos nelas.
 
+### Jobs assíncronos (backend)
+
+| Variável | Obrigatória | Padrão | Descrição |
+|----------|-------------|--------|-----------|
+| `REDIS_URL` | Para jobs | — | URL do Redis. Sem ela, `POST /jobs` retorna 503 e o worker se recusa a iniciar |
+| `WORKER_CONCURRENCY` | Não | `2` | Jobs processados em paralelo pelo worker |
+| `JOB_MAX_ATTEMPTS` | Não | `3` | Tentativas totais por job (1ª tentativa + retries) |
+| `JOB_BACKOFF_MS` | Não | `5000` | Atraso base do backoff exponencial entre retries |
+
 ## 🏃 Executando Localmente
 
 ### Desenvolvimento (frontend + API simultâneos)
@@ -192,6 +269,26 @@ npm run dev
 - API: http://localhost:3001
 - Health check: http://localhost:3001/api/v1/health
 - Readiness: http://localhost:3001/api/v1/health/ready
+
+### Com Redis + worker (jobs assíncronos)
+
+```bash
+# Terminal 0 - Redis (escolha uma opção)
+redis-server --port 6379
+# ou: docker run -p 6379:6379 redis:7
+
+# Terminal 1 - API
+npm run dev --workspace=apps/api
+
+# Terminal 2 - Worker (processo separado, obrigatório para consumir a fila)
+npm run worker --workspace=apps/api
+
+# Terminal 3 - Frontend
+npm run dev --workspace=apps/web
+```
+
+Sem Redis, a API inicia normalmente, mas `POST /api/v1/jobs` responde `503 QUEUE_UNAVAILABLE`.
+Sem worker, os jobs ficam em `queued` até um worker iniciar (recuperação no boot re-enfileira órfãos).
 
 ### Separadamente
 
@@ -227,6 +324,10 @@ npm run typecheck
 
 # Testes
 npm run test
+
+# Testes de integração da fila (exige Redis local: REDIS_URL=redis://127.0.0.1:6379)
+# PowerShell: $env:RUN_QUEUE_INTEGRATION='1'; npm run test:integration --workspace=apps/api
+# Bash:       RUN_QUEUE_INTEGRATION=1 npm run test:integration --workspace=apps/api
 
 # Tudo junto
 npm run lint && npm run typecheck && npm run test
@@ -285,6 +386,43 @@ Todas as tabelas têm RLS habilitado com políticas que garantem:
 | `GET` | `/api/v1/experiments/:id/runs` | Histórico de execuções | Sim |
 | `POST` | `/api/v1/experiments/:id/run` | Reexecutar (nova run; 400 se já em execução) | Sim |
 | `DELETE` | `/api/v1/experiments/:id` | Excluir experimento + runs | Sim |
+| `POST` | `/api/v1/jobs` | Criar job assíncrono → **202** `{ id, status: queued, ... }` | Sim |
+| `GET` | `/api/v1/jobs?page=&limit=&status=&jobType=&projectId=` | Listar jobs próprios (paginado) | Sim |
+| `GET` | `/api/v1/jobs/:jobId` | Estado, progresso real por estágio e resultado | Sim |
+| `POST` | `/api/v1/jobs/:jobId/cancel` | Cancelar (queued: imediato; active: cooperativo) | Sim |
+
+### Frontend Pages (Fase 8)
+
+| Rota | Descrição | Auth |
+|------|-----------|------|
+| `/` | Landing (não autenticado) / Dashboard (autenticado) | Não / Sim |
+| `/projects` | Lista de projetos com CRUD | Sim |
+| `/projects/[projectId]` | Detalhe do projeto (datasets + experiments) | Sim |
+| `/projects/[projectId]/datasets/[datasetId]` | Exploração completa do dataset | Sim |
+| `/projects/[projectId]/experiments/[experimentId]` | Detalhe do experimento + comparação de runs | Sim |
+| `/jobs` | Central de execuções (histórico paginado) | Sim |
+| `/auth/login` | Login | Não |
+| `/auth/signup` | Cadastro | Não |
+| `/auth/forgot-password` | Recuperação de senha | Não |
+| `/auth/reset-password` | Redefinição de senha | Não |
+
+### Exemplo de Resposta — Job criado (202)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "623e4567-e89b-12d3-a456-426614174000",
+    "jobType": "analysis.describe",
+    "status": "queued",
+    "progress": 0,
+    "attempts": 0,
+    "maxAttempts": 3,
+    "createdAt": "2026-10-14T12:00:00.000Z"
+  },
+  "meta": { "timestamp": "2026-10-14T12:00:00.000Z", "version": "v1" }
+}
+```
 
 ### Exemplo de Resposta — Health
 
@@ -427,13 +565,18 @@ Serviços no Render não compartilham `localhost` — configure `JULIA_SERVICE_U
 - [x] Classificação: `logistic_regression`, `random_forest_classifier` (accuracy, precision, recall, F1, matriz de confusão)
 - [x] Experimentos e execuções persistidos (`experiments`, `model_runs`)
 - [x] Interface de experimentos (configurar, executar, histórico, métricas)
-- [ ] Previsão de séries temporais — Fase 5
-- [ ] Detecção de anomalias — Fase 5
-- [ ] Registro de artefatos de modelo — Fase 5 (só métricas são persistidas hoje)
-- [ ] Processamento assíncrono (Redis + BullMQ) para uploads/treinos grandes — Fase 5
+- [ ] Previsão de séries temporais — Fase 7
+- [ ] Detecção de anomalias — Fase 7
+- [ ] Registro de artefatos de modelo — Fase 7 (só métricas são persistidas hoje)
+- [x] Processamento assíncrono (Redis + BullMQ) para uploads/treinos grandes — Fase 6 ✅
 
-### Fase 5 — Production Ready (futuro)
-- [ ] Redis + BullMQ para jobs assíncronos
+### Fase 5 — Julia Statistical Engine (implementada)
+
+- [x] Serviço Julia (HTTP.jl) com describe/correlação/covariância/álgebra linear
+- [x] Comparação Python × Julia com tolerâncias e flags de concordância
+- [x] Análises persistidas (`analysis_runs`) + interface com heatmap
+
+### Fase 7 — Production Ready (futuro)
 - [ ] LLM Provider para explicações automáticas
 - [ ] Geração de relatórios PDF/HTML
 - [ ] Docker multi-stage para todos os serviços
@@ -445,13 +588,13 @@ Serviços no Render não compartilham `localhost` — configure `JULIA_SERVICE_U
 
 | Limitação | Planejada Para |
 |-----------|----------------|
-| Sem testes E2E completos | Fase 5 |
-| Serviço Julia não implementado | Fase 5 |
-| Treinamento é síncrono (limitado por `ML_TIMEOUT_MS`, padrão 120s) | Fase 5 (filas) |
-| Modelos treinados não são persistidos como artefatos (só métricas) | Fase 5 |
-| Histograma é calculado no navegador a partir da amostra de 100 linhas | Fase 5 (agregação no backend) |
-| Docker não configurado | Fase 5 |
-| Deploy não automatizado | Fase 5 |
+| Sem testes E2E completos (com banco real) | Fase 7 |
+| Treinamento/análise via jobs é limitado pelos timeouts dos serviços | Fase 7 (filas com checkpoint) |
+| Cancelamento de job ativo não aborta chamadas HTTP em voo (resultado descartado) | Limite documentado |
+| Modelos treinados não são persistidos como artefatos (só métricas) | Fase 7 |
+| Histograma é calculado no navegador a partir da amostra de 100 linhas | Fase 7 (agregação no backend) |
+| Docker não configurado | Fase 7 |
+| Deploy não automatizado | Fase 7 |
 
 ## 🤖 Serviço ML (Fase 4)
 
@@ -481,6 +624,38 @@ cd services/ml-python
 3. Na API: `ML_SERVICE_URL=https://<ml-service>.onrender.com`.
 4. Serviços Render **não** compartilham `localhost` — use sempre a URL pública/privada do serviço.
 5. Mantenha o serviço ML **privado** quando o plano permitir; o frontend nunca o chama diretamente.
+
+## 👷 Worker de Jobs (Fase 6)
+
+### Executar localmente
+
+```bash
+# 1. Suba o Redis (uma das opções)
+redis-server --port 6379
+# docker run -p 6379:6379 redis:7
+
+# 2. Em outro terminal, inicie o worker (mesmo .env da API)
+npm run worker --workspace=apps/api
+# produção (após npm run build): npm run worker:start --workspace=apps/api
+```
+
+O worker valida o `REDIS_URL` na inicialização e aborta com erro claro se inalcançável.
+Na inicialização ele também recupera jobs `active` órfãos (sem heartbeat há >300s),
+re-enfileirando com o mesmo `jobId` determinístico (sem duplicar).
+
+### Deploy no Render
+
+1. **Redis gerenciado**: Render Key Value (ou Upstash/Railway) → copie a URL para `REDIS_URL`.
+2. **API (Web Service)**: deploy normal; inclua `REDIS_URL` nas variáveis.
+3. **Worker (Background Worker)**: mesmo repositório, comando `npm run build && npm run worker:start --workspace=apps/api`;
+   mesmas variáveis da API (`DATABASE_URL`, `REDIS_URL`, `ML_SERVICE_URL/KEY`, `JULIA_SERVICE_URL/KEY`…).
+4. Escale API e worker de forma independente (`WORKER_CONCURRENCY` por instância).
+
+### Recuperação
+
+- Crash entre DB e Redis: a linha `queued` sem job correspondente é detectada no boot do worker e re-enfileirada.
+- Crash durante execução: a linha fica `active` sem heartbeat → recuperada no próximo boot.
+- Falhas transitórias: retry com backoff exponencial (`JOB_MAX_ATTEMPTS`, `JOB_BACKOFF_MS`); permanentes não repetem.
 
 ## 🤝 Contribuindo
 

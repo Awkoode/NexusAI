@@ -72,14 +72,35 @@ function startServer(): void {
   const env = getEnv();
   const app = createApp();
 
-  const server = app.listen(env.PORT, () => {
+  const server = app.listen(env.PORT, '0.0.0.0', () => {
     logger.info(`NexusAI API started`, {
       port: env.PORT,
       env: env.NODE_ENV,
       version: env.API_VERSION,
       corsOrigin: env.CORS_ORIGIN,
     });
+    console.log(`>>> Server listening on port ${env.PORT}`);
   });
+
+  server.on('error', (err) => {
+    console.error('>>> Server error:', err);
+    logger.error('Server error', {}, err);
+  });
+
+  server.on('listening', () => {
+    console.log('>>> Server listening event fired');
+    const addr = server.address();
+    console.log('>>> Server address:', addr);
+  });
+
+  server.on('close', () => {
+    console.log('>>> Server CLOSED');
+  });
+
+  // Keep process alive
+  setInterval(() => {
+    console.log('>>> Heartbeat:', new Date().toISOString());
+  }, 10000);
 
   // Graceful shutdown
   const shutdown = (signal: string): void => {

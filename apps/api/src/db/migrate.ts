@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { getEnv } from '../config/env';
 import { logger } from '../utils/logger';
 import fs from 'fs';
@@ -10,9 +11,12 @@ interface Migration {
   down: string;
 }
 
-// Read migrations from database/migrations directory
+// Read migrations from database/migrations directory (repo root)
 function loadMigrations(): Migration[] {
-  const migrationsDir = path.join(process.cwd(), 'database', 'migrations');
+  // When running from apps/api via npm workspace, cwd is apps/api
+  // Migrations are at repo root /database/migrations
+  const repoRoot = path.resolve(process.cwd(), '..', '..');
+  const migrationsDir = path.join(repoRoot, 'database', 'migrations');
 
   if (!fs.existsSync(migrationsDir)) {
     logger.warn('Migrations directory not found', { path: migrationsDir });

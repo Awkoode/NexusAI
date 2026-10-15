@@ -7,6 +7,7 @@ interface EmptyStateProps {
   description: string;
   actionLabel?: string;
   actionHref?: string;
+  onAction?: () => void;
   icon?: string;
   variant?: 'default' | 'centered';
 }
@@ -16,6 +17,7 @@ export function EmptyState({
   description,
   actionLabel,
   actionHref,
+  onAction,
   icon = '📭',
   variant = 'centered',
 }: EmptyStateProps) {
@@ -27,7 +29,16 @@ export function EmptyState({
         </div>
         <h3 className="text-xl font-semibold text-surface-900 dark:text-surface-100 mb-3">{title}</h3>
         <p className="text-surface-600 dark:text-surface-400 mb-6 max-w-md mx-auto">{description}</p>
-        {actionLabel && actionHref && (
+        {actionLabel && (actionHref || onAction) && (
+          <button
+            onClick={onAction}
+            className={actionHref ? 'btn-primary inline-flex' : 'btn-primary inline-flex'}
+            style={{ display: 'inline-flex' }}
+          >
+            {actionLabel}
+          </button>
+        )}
+        {actionHref && !onAction && actionLabel && (
           <Link href={actionHref} className="btn-primary inline-flex">
             {actionLabel}
           </Link>
@@ -45,7 +56,15 @@ export function EmptyState({
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1">{title}</h3>
           <p className="text-surface-600 dark:text-surface-400 text-sm mb-4">{description}</p>
-          {actionLabel && actionHref && (
+          {actionLabel && (actionHref || onAction) && (
+            <button
+              onClick={onAction}
+              className="btn-secondary text-sm"
+            >
+              {actionLabel}
+            </button>
+          )}
+          {actionHref && !onAction && actionLabel && (
             <Link href={actionHref} className="btn-secondary text-sm">
               {actionLabel}
             </Link>

@@ -6,12 +6,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Navigation } from '@/components/Navigation';
 import { DeleteConfirmModal } from '@/components/DeleteConfirmModal';
+import { RunsComparison } from '@/components/RunsComparison';
+import { ConfusionHeatmap } from '@/components/ConfusionHeatmap';
 import * as api from '@/lib/api';
-
-function formatNumber(v: unknown): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return v.toLocaleString('en-US', { maximumFractionDigits: 4 });
-}
+import { formatUnknown, formatDateTime } from '@/lib/format';
 
 export default function ExperimentDetailPage({
   params,
@@ -81,6 +79,7 @@ export default function ExperimentDetailPage({
   const isRegression = experiment?.taskType === 'regression';
   const confusion = metrics['confusionMatrix'] as number[][] | undefined;
   const labels = (metrics['labels'] as string[] | undefined) ?? [];
+  const averaging = metrics['averaging'] as string | undefined;
 
   if (authLoading || loading) {
     return (
@@ -121,15 +120,11 @@ export default function ExperimentDetailPage({
               {experiment?.taskType} · {experiment?.modelType} · target: {experiment?.targetColumn}
             </p>
             {experiment && (
-              <span
-                className={`badge mt-2 ${
-                  experiment.status === 'completed'
-                    ? 'badge-success'
-                    : experiment.status === 'failed'
-                      ? 'badge-error'
-                      : 'badge-warning'
-                }`}
-              >
+              <span className={`badge mt-2 ${
+                experiment.status === 'completed' ? 'badge-success'
+                : experiment.status === 'failed' ? 'badge-error'
+                : 'badge-warning'
+              }`}>
                 {experiment.status}
               </span>
             )}
@@ -155,18 +150,18 @@ export default function ExperimentDetailPage({
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {isRegression
                 ? [
-                    { label: 'MAE', value: formatNumber(metrics['mae']) },
-                    { label: 'RMSE', value: formatNumber(metrics['rmse']) },
+                    { label: 'MAE', value: formatUnknown(metrics['mae']) },
+                    { label: 'RMSE', value: formatUnknown(metrics['rmse']) },
                     {
                       label: 'R²',
                       value:
                         metrics['r2'] === null || metrics['r2'] === undefined
                           ? 'n/a (undefined)'
-                          : formatNumber(metrics['r2']),
+                          : formatUnknown(metrics['r2']),
                     },
                     {
                       label: 'Train / Test',
-                      value: `${formatNumber(metrics['trainSamples'])} / ${formatNumber(metrics['testSamples'])}`,
+                      value: `${formatUnknown(metrics['trainSamples'])} / ${formatUnknown(metrics['testSamples'])}`,
                     },
                   ].map((s) => (
                     <div key={s.label} className="card p-4">
@@ -175,10 +170,10 @@ export default function ExperimentDetailPage({
                     </div>
                   ))
                 : [
-                    { label: 'Accuracy', value: formatNumber(metrics['accuracy']) },
-                    { label: 'Precision', value: formatNumber(metrics['precision']) },
-                    { label: 'Recall', value: formatNumber(metrics['recall']) },
-                    { label: 'F1-score', value: formatNumber(metrics['f1']) },
+                    { label: 'Accuracy', value: formatUnknown(metrics['accuracy']) },
+                    { label: 'Precision', value: formatUnknown(metrics['precision']) },
+                    { label: 'Recall', value: formatUnknown(metrics['recall']) },
+                    { label: 'F1-score', value: formatUnknown(metrics['f1']) },
                   ].map((s) => (
                     <div key={s.label} className="card p-4">
                       <p className="text-xs text-surface-500 dark:text-surface-400">{s.label}</p>
@@ -188,31 +183,8 @@ export default function ExperimentDetailPage({
             </div>
 
             {!isRegression && confusion && (
-              <div className="card p-6 mb-8 overflow-x-auto">
-                <h2 className="text-lg font-semibold mb-1">Confusion matrix</h2>
-                <p className="text-xs text-surface-500 mb-4">
-                  Rows = actual, columns = predicted{metrics['averaging'] ? ` · averaging: ${String(metrics['averaging'])}` : ''}.
-                </p>
-                <table className="text-sm">
-                  <thead>
-                    <tr>
-                      <th className="py-2 pr-4" />
-                      {labels.map((l) => (
-                        <th key={l} className="py-2 pr-4 font-medium">{l}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {confusion.map((row, i) => (
-                      <tr key={labels[i] ?? i}>
-                        <th className="py-2 pr-4 font-medium text-left">{labels[i]}</th>
-                        {row.map((cell, j) => (
-                          <td key={j} className="py-2 pr-4 tabular-nums">{cell}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="card p-6 mb-8">
+                <ConfusionHeatmap matrix={confusion} labels={labels} averaging={averaging} />
               </div>
             )}
 
@@ -257,6 +229,12 @@ export default function ExperimentDetailPage({
 
         {runs.length > 1 && (
           <div className="card p-6 mb-8">
+            <RunsComparison taskType={experiment?.taskType ?? 'regression'} runs={runs} />
+          </div>
+        )}
+
+        {runs.length > 0 && runs.length <= 1 && (
+          <div className="card p-6 mb-8">
             <h2 className="text-lg font-semibold mb-4">Run history ({runs.length})</h2>
             <ul className="space-y-2 text-sm">
               {runs.map((r) => (
@@ -264,7 +242,7 @@ export default function ExperimentDetailPage({
                   <span className={`badge ${r.status === 'completed' ? 'badge-success' : r.status === 'failed' ? 'badge-error' : 'badge-warning'}`}>
                     {r.status}
                   </span>
-                  <span className="text-surface-500">{new Date(r.createdAt).toLocaleString('pt-BR')}</span>
+                  <span className="text-surface-500">{formatDateTime(r.createdAt)}</span>
                 </li>
               ))}
             </ul>

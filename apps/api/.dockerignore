@@ -1,0 +1,54 @@
+# NexusAI API — Docker ignore patterns
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output (we copy from builder stage)
+dist/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Documentation
+*.md
+!README.md
+
+# Uploads (local storage)
+uploads/
+
+# Database migrations (handled separately)
+database/migrations/

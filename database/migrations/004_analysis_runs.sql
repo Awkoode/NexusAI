@@ -2,6 +2,8 @@
 -- Created at: 2026-10-14
 -- Description: Stores statistical analyses (Julia/Python) and comparisons
 
+-- UP
+
 CREATE TABLE IF NOT EXISTS analysis_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -63,3 +65,16 @@ CREATE POLICY "Users can delete own analyses" ON analysis_runs
         AND projects.user_id = auth.uid()
     )
   );
+
+-- DOWN
+DROP POLICY IF EXISTS "Users can delete own analyses" ON analysis_runs;
+DROP POLICY IF EXISTS "Users can update own analyses" ON analysis_runs;
+DROP POLICY IF EXISTS "Users can insert own analyses" ON analysis_runs;
+DROP POLICY IF EXISTS "Users can view own analyses" ON analysis_runs;
+ALTER TABLE analysis_runs DISABLE ROW LEVEL SECURITY;
+DROP INDEX IF EXISTS idx_analysis_runs_created_at;
+DROP INDEX IF EXISTS idx_analysis_runs_type;
+DROP INDEX IF EXISTS idx_analysis_runs_user_id;
+DROP INDEX IF EXISTS idx_analysis_runs_dataset_id;
+DROP INDEX IF EXISTS idx_analysis_runs_project_id;
+DROP TABLE IF EXISTS analysis_runs;

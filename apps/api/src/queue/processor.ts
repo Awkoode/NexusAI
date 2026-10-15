@@ -237,8 +237,6 @@ export async function processAnalyticsJob(job: Job<AnalyticsJobData>): Promise<R
     // Transient failure: record the retry stage and rethrow. BullMQ owns the
     // retry budget authoritatively; the worker-level 'failed' listener below
     // persists the terminal state only when retries are truly exhausted.
-    // eslint-disable-next-line no-console
-    console.log('DEBUG transient', { attemptsMade: job.attemptsMade, err: String(error).slice(0, 200) });
     // (Note: on some Redis versions attemptsMade is already >= 1 on first
     // delivery, so this code MUST NOT decide exhaustion itself.)
     await reportProgress(jobRow.id, 10, `retrying (attempt ${job.attemptsMade + 1})`);

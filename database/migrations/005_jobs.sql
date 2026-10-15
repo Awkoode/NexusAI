@@ -11,6 +11,8 @@
 --   for cooperative cancellation of running jobs.
 -- - Terminal states: completed, failed, cancelled.
 
+-- UP
+
 CREATE TABLE IF NOT EXISTS jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -72,3 +74,19 @@ CREATE POLICY "Users can update own jobs" ON jobs
 
 CREATE POLICY "Users can delete own jobs" ON jobs
   FOR DELETE USING (user_id = auth.uid());
+
+-- DOWN
+DROP POLICY IF EXISTS "Users can delete own jobs" ON jobs;
+DROP POLICY IF EXISTS "Users can update own jobs" ON jobs;
+DROP POLICY IF EXISTS "Users can insert own jobs" ON jobs;
+DROP POLICY IF EXISTS "Users can view own jobs" ON jobs;
+ALTER TABLE jobs DISABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS update_jobs_updated_at ON jobs;
+DROP INDEX IF EXISTS idx_jobs_bullmq_job_id;
+DROP INDEX IF EXISTS idx_jobs_created_at;
+DROP INDEX IF EXISTS idx_jobs_type;
+DROP INDEX IF EXISTS idx_jobs_status;
+DROP INDEX IF EXISTS idx_jobs_dataset_id;
+DROP INDEX IF EXISTS idx_jobs_project_id;
+DROP INDEX IF EXISTS idx_jobs_user_id;
+DROP TABLE IF EXISTS jobs;

@@ -270,6 +270,34 @@ onde residem auth, propriedade e persistência (`analysis_runs`).
 - ✅ Estatística descritiva adicionada ao Python é mínima e só serve à comparação (sem novo escopo de ML)
 - ⚠️ Benchmark incluso é latência round-trip (HTTP + cálculo), documentado como não-isolado
 
+### ADR 015 — Fila BullMQ com Worker Node Orquestrador (Fase 6)
+**Data**: 2026-10-14
+**Status**: Aceito
+**Contexto**: Treinos e análises longas estouram timeouts HTTP; Python/Julia não falam BullMQ (ecossistema Node).
+**Decisão**: Fila `nexusai-analytics` (bullmq@4) + tabela `jobs` como registro autoritativo; worker Node separado
+reutiliza **o mesmo código de execução** dos endpoints síncronos (`analysisRunner`, `trainingRunner`,
+`datasetProfiler`) e chama Python/Julia por HTTP interno. Payloads só com IDs + parâmetros. `jobId`
+determinístico (`job:<uuid>`) impede duplicação em re-enfileiramento/recuperação.
+**Consequências**:
+- ✅ Sync e async têm resultados idênticos (mesmo code path); endpoints síncronos preservados
+- ✅ Retry só para transitórias (`UnrecoverableError` pula retry); estado terminal decidido pelo evento
+`failed` do BullMQ, não por contagem local (observado: no Redis 5.0 a primeira entrega chega com
+`attemptsMade=1` — documentado nos testes)
+- ⚠️ Cancelamento de job ativo é cooperativo: chamadas HTTP em voo não são abortadas, o resultado é
+descartado; DB é a fonte de verdade (BullMQ pode marcar `completed` enquanto o DB diz `cancelled`)
+
+### ADR 016 — Recuperação de Órfãos e Consistência Fila×Banco (Fase 6)
+**Data**: 2026-10-14
+**Status**: Aceito
+**Contexto**: Crash entre gravação no banco e publicação no Redis (ou morte do worker) deixa estados divergentes.
+**Decisão**: Ordem de criação: valida → autoriza → cria linha de entidade (`pending`) → cria linha `jobs`
+(`queued`) → publica no Redis; falha no publish marca o job como falho e remove a entidade pendente.
+No boot, o worker re-enfileira linhas `active` sem heartbeat há >300s com o mesmo `jobId` determinístico.
+**Consequências**:
+- ✅ Sem órfãos silenciosos nos dois sentidos; re-enfileirar é idempotente
+- ⚠️ Janela entre `queued` no banco e publish ainda existe, mas é detectável (linha `queued` sem job no
+Redis pode ser re-enfileirada manualmente pelo mesmo `jobId`)
+
 ---
 
 ## 5. Padrões de Código

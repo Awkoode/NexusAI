@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Navigation } from '@/components/Navigation';
 import { AnalysisPanel } from '@/components/AnalysisPanel';
+import { JobsPanel } from '@/components/JobsPanel';
+import { ScatterPlot } from '@/components/ScatterPlot';
 import * as api from '@/lib/api';
 import {
   ResponsiveContainer,
@@ -16,11 +18,8 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts';
-
-function formatNumber(n: number): string {
-  if (!Number.isFinite(n)) return '—';
-  return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
-}
+import { formatNumber } from '@/lib/format';
+import { buildHistogramBins } from '@/lib/charts';
 
 export default function DatasetDetailPage({
   params,
@@ -95,25 +94,68 @@ export default function DatasetDetailPage({
       .map((r) => Number(r[colIdx]))
       .filter((v) => Number.isFinite(v));
     if (values.length === 0) return [];
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const bins = 10;
-    const width = max === min ? 1 : (max - min) / bins;
-    const counts = new Array<number>(bins).fill(0);
-    for (const v of values) {
-      const idx = Math.min(bins - 1, Math.floor((v - min) / width));
-      counts[idx] = (counts[idx] ?? 0) + 1;
-    }
-    return counts.map((count, i) => ({
-      bin: `${formatNumber(min + i * width)}–${formatNumber(min + (i + 1) * width)}`,
-      count,
-    }));
+    return buildHistogramBins(values, 10);
   }, [preview, histColumn]);
 
   const numericColumns = useMemo(
     () => (profile?.columns ?? []).filter((c) => c.numericStats),
     [profile]
   );
+
+  const numericHeaders = useMemo(
+    () => preview?.headers.filter((_, i) => preview.columnTypes[i] === 'integer' || preview.columnTypes[i] === 'float') ?? [],
+    [preview]
+  );
+
+  const scatterX = useMemo(
+    () => numericHeaders[0] ?? '',
+    [numericHeaders]
+  );
+  const scatterY = useMemo(
+    () => numericHeaders[1] ?? numericHeaders[0] ?? '',
+    [numericHeaders]
+  );
+
+  const scatterData = useMemo(() => {
+    if (!preview || !scatterX || !scatterY || scatterX === scatterY) return null;
+    const xi = preview.headers.indexOf(scatterX);
+    const yi = preview.headers.indexOf(scatterY);
+    if (xi < 0 || yi < 0) return null;
+    const xs = preview.rows.map((r) => Number(r[xi]));
+    const ys = preview.rows.map((r) => Number(r[yi]));
+    return { xName: scatterX, yName: scatterY, xs, ys };
+  }, [preview, scatterX, scatterY]);
+
+  const correlationData = useMemo(() => {
+    if (!preview || numericHeaders.length < 2) return null;
+    const indices = numericHeaders.map((h) => preview.headers.indexOf(h));
+    const cols = indices.map((idx) =>
+      preview.rows.map((r) => Number(r[idx]))
+    );
+    const n = cols.length;
+    if (n < 2) return null;
+    const matrix: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < n; j++) {
+        const xi = cols[i];
+        const yj = cols[j];
+        const pairs = xi.map((x, k) => (Number.isFinite(x) && Number.isFinite(yj[k]) ? [x, yj[k]] : null)).filter((p): p is [number, number] => p !== null);
+        if (pairs.length < 2) {
+          row.push(NaN);
+          continue;
+        }
+        const meanX = pairs.reduce((s, p) => s + p[0], 0) / pairs.length;
+        const meanY = pairs.reduce((s, p) => s + p[1], 0) / pairs.length;
+        const cov = pairs.reduce((s, p) => s + (p[0] - meanX) * (p[1] - meanY), 0) / pairs.length;
+        const stdX = Math.sqrt(pairs.reduce((s, p) => s + (p[0] - meanX) ** 2, 0) / pairs.length);
+        const stdY = Math.sqrt(pairs.reduce((s, p) => s + (p[1] - meanY) ** 2, 0) / pairs.length);
+        row.push(stdX > 0 && stdY > 0 ? cov / (stdX * stdY) : NaN);
+      }
+      matrix.push(row);
+    }
+    return { labels: numericHeaders, matrix };
+  }, [preview, numericHeaders]);
 
   if (authLoading || loading) {
     return (
@@ -249,6 +291,68 @@ export default function DatasetDetailPage({
               )}
             </div>
 
+            {scatterData && (
+              <div className="card p-6 mb-8">
+                <h2 className="text-lg font-semibold mb-1">Scatter plot (sample)</h2>
+                <p className="text-xs text-surface-500 mb-4">
+                  Preview rows only — limited to 500 points. Not the full dataset.
+                </p>
+                <ScatterPlot {...scatterData} />
+              </div>
+            )}
+
+            {correlationData && numericHeaders.length >= 2 && (
+              <div className="card p-6 mb-8">
+                <h2 className="text-lg font-semibold mb-1">Correlation matrix (sample)</h2>
+                <p className="text-xs text-surface-500 mb-4">
+                  Pearson correlation on preview rows. Diverging color: blue = negative, purple = positive.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="text-sm border-collapse">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="py-2 pr-2" />
+                        {correlationData.labels.map((l) => (
+                          <th key={l} scope="col" className="py-2 px-3 font-medium text-xs max-w-[120px] truncate">
+                            {l}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {correlationData.labels.map((rowLabel, i) => (
+                        <tr key={rowLabel}>
+                          <th scope="row" className="py-2 pr-2 font-medium text-xs text-left max-w-[120px] truncate">
+                            {rowLabel}
+                          </th>
+                          {correlationData.labels.map((colLabel, j) => {
+                            const value = correlationData.matrix[i]?.[j];
+                            const isDiagonal = i === j;
+                            const color = isDiagonal
+                              ? '#f1f5f9'
+                              : (typeof value === 'number' && Number.isFinite(value)
+                                  ? (value < 0
+                                      ? `rgba(59, 130, 246, ${0.15 + 0.75 * -value})`
+                                      : `rgba(139, 92, 246, ${0.15 + 0.75 * value})`)
+                                  : '#e2e8f0');
+                            return (
+                              <td
+                                key={colLabel}
+                                className="py-2 px-3 text-center tabular-nums border border-surface-200 dark:border-surface-700"
+                                style={{ backgroundColor: color }}
+                              >
+                                {isDiagonal ? '1.0000' : (typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—')}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {preview && (
               <div className="card p-6 mb-8 overflow-x-auto">
                 <h2 className="text-lg font-semibold mb-4">
@@ -312,7 +416,7 @@ export default function DatasetDetailPage({
                 </table>
                 <p className="text-xs text-surface-500 mt-4">
                   Standard deviation is population (÷ N). Empty strings count as missing; the strings
-                  “0” and “false” are valid values. Identifier-like digit codes are kept as detected —
+                  "0" and "false" are valid values. Identifier-like digit codes are kept as detected —
                   review the type before treating a column as quantitative.
                 </p>
               </div>
@@ -322,11 +426,13 @@ export default function DatasetDetailPage({
               <AnalysisPanel
                 projectId={params.projectId}
                 dataset={dataset}
-                numericColumns={preview.headers.filter(
-                  (_, i) => preview.columnTypes[i] === 'integer' || preview.columnTypes[i] === 'float'
-                )}
+                numericColumns={numericHeaders}
               />
             )}
+
+            <div className="card p-6 mt-8">
+              <JobsPanel projectId={params.projectId} />
+            </div>
           </>
         )}
       </main>

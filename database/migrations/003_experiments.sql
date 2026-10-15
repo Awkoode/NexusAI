@@ -2,6 +2,8 @@
 -- Created at: 2026-10-14
 -- Description: Creates experiments and model_runs tables for ML Phase 4
 
+-- UP
+
 CREATE TABLE IF NOT EXISTS experiments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -134,3 +136,25 @@ CREATE POLICY "Users can delete own model runs" ON model_runs
         AND projects.user_id = auth.uid()
     )
   );
+
+-- DOWN
+DROP POLICY IF EXISTS "Users can delete own model runs" ON model_runs;
+DROP POLICY IF EXISTS "Users can update own model runs" ON model_runs;
+DROP POLICY IF EXISTS "Users can insert own model runs" ON model_runs;
+DROP POLICY IF EXISTS "Users can view own model runs" ON model_runs;
+DROP POLICY IF EXISTS "Users can delete own experiments" ON experiments;
+DROP POLICY IF EXISTS "Users can update own experiments" ON experiments;
+DROP POLICY IF EXISTS "Users can insert own experiments" ON experiments;
+DROP POLICY IF EXISTS "Users can view own experiments" ON experiments;
+ALTER TABLE model_runs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE experiments DISABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS update_experiments_updated_at ON experiments;
+DROP INDEX IF EXISTS idx_model_runs_created_at;
+DROP INDEX IF EXISTS idx_model_runs_experiment_id;
+DROP INDEX IF EXISTS idx_experiments_created_at;
+DROP INDEX IF EXISTS idx_experiments_status;
+DROP INDEX IF EXISTS idx_experiments_user_id;
+DROP INDEX IF EXISTS idx_experiments_dataset_id;
+DROP INDEX IF EXISTS idx_experiments_project_id;
+DROP TABLE IF EXISTS model_runs;
+DROP TABLE IF EXISTS experiments;

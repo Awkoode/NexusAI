@@ -490,3 +490,113 @@ export async function deleteAnalysis(analysisId: string): Promise<void> {
     throw new Error(data.error?.message || 'Failed to delete analysis');
   }
 }
+
+export type JobType =
+  | 'dataset.profile'
+  | 'ml.train'
+  | 'analysis.describe'
+  | 'analysis.correlation'
+  | 'analysis.covariance'
+  | 'analysis.linear-algebra'
+  | 'analysis.compare';
+
+export type JobStatus =
+  | 'queued'
+  | 'active'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'cancel_requested';
+
+const TERMINAL_JOB_STATUSES: JobStatus[] = ['completed', 'failed', 'cancelled'];
+
+export function isTerminalJobStatus(status: JobStatus): boolean {
+  return TERMINAL_JOB_STATUSES.includes(status);
+}
+
+export interface Job {
+  id: string;
+  userId: string;
+  projectId?: string | null;
+  datasetId?: string | null;
+  jobType: JobType;
+  status: JobStatus;
+  params: Record<string, unknown>;
+  progress: number;
+  stage?: string | null;
+  result?: Record<string, unknown> | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  attempts: number;
+  maxAttempts: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface CreateJobInput {
+  jobType: JobType;
+  projectId: string;
+  datasetId: string;
+  [key: string]: unknown;
+}
+
+export interface JobsPage {
+  jobs: Job[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export async function createJob(input: CreateJobInput): Promise<Job> {
+  const response = await fetchWithAuth(`/api/v1/jobs`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  const data: ApiResponse<Job> = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error?.message || 'Failed to create job');
+  }
+
+  return data.data!;
+}
+
+export async function listJobs(page = 1, limit = 20, projectId?: string): Promise<JobsPage> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (projectId) params.set('projectId', projectId);
+  const response = await fetchWithAuth(`/api/v1/jobs?${params.toString()}`);
+  const data: ApiResponse<JobsPage> = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error?.message || 'Failed to fetch jobs');
+  }
+
+  return data.data!;
+}
+
+export async function getJob(jobId: string): Promise<Job> {
+  const response = await fetchWithAuth(`/api/v1/jobs/${jobId}`);
+  const data: ApiResponse<Job> = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error?.message || 'Failed to fetch job');
+  }
+
+  return data.data!;
+}
+
+export async function cancelJob(jobId: string): Promise<Job> {
+  const response = await fetchWithAuth(`/api/v1/jobs/${jobId}/cancel`, {
+    method: 'POST',
+  });
+  const data: ApiResponse<Job> = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error?.message || 'Failed to cancel job');
+  }
+
+  return data.data!;
+}

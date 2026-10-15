@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { Navigation } from '@/components/Navigation';
+import { AppShell } from '@/components/AppShell';
 import { EmptyState } from '@/components/EmptyState';
 import { ProjectCard } from '@/components/ProjectCard';
 import { ProjectForm } from '@/components/ProjectForm';
@@ -80,60 +80,54 @@ export default function ProjectsPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex flex-col">
-        <Navigation />
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 pt-24">
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
-          </div>
-        </main>
-      </div>
+      <AppShell>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" role="status" aria-label="Carregando" />
+        </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navigation />
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 pt-24">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">
-          <div>
-            <h1 className="text-3xl font-bold text-surface-900 dark:text-surface-50">Projetos</h1>
-            <p className="text-surface-600 dark:text-surface-400 mt-1">
-              Organize seus datasets, experimentos e modelos em projetos isolados.
-            </p>
-          </div>
-          <button onClick={() => setIsFormOpen(true)} className="btn-primary">
-            + Novo Projeto
-          </button>
+    <AppShell>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">
+        <div>
+          <h1 className="text-3xl font-bold text-surface-900 dark:text-surface-50">Projetos</h1>
+          <p className="text-surface-600 dark:text-surface-400 mt-1">
+            Organize seus datasets, experimentos e modelos em projetos isolados.
+          </p>
         </div>
+        <button onClick={() => setIsFormOpen(true)} className="btn-primary">
+          + Novo Projeto
+        </button>
+      </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
-          </div>
-        )}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+        </div>
+      )}
 
-        {projects.length === 0 ? (
-          <EmptyState
-            title="Nenhum projeto criado"
-            description="Comece criando seu primeiro projeto para organizar datasets, experimentos e modelos."
-            actionLabel="Criar projeto"
-            actionHref="#"
-            icon="📁"
-          />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                onEdit={() => setEditingProject(project)}
-                onDelete={() => setDeletingProject(project)}
-              />
-            ))}
-          </div>
-        )}
-      </main>
+      {projects.length === 0 ? (
+        <EmptyState
+          title="Nenhum projeto criado"
+          description="Comece criando seu primeiro projeto para organizar datasets, experimentos e modelos."
+          actionLabel="Criar projeto"
+          onAction={() => setIsFormOpen(true)}
+          icon="📁"
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {projects.map((project) => (
+            <ProjectCard
+              key={project.id}
+              project={project}
+              onEdit={() => setEditingProject(project)}
+              onDelete={() => setDeletingProject(project)}
+            />
+          ))}
+        </div>
+      )}
 
       {(isFormOpen || editingProject) && (
         <ProjectForm
@@ -153,6 +147,6 @@ export default function ProjectsPage() {
           onCancel={() => setDeletingProject(null)}
         />
       )}
-    </div>
+    </AppShell>
   );
 }

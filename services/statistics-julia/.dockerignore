@@ -1,0 +1,52 @@
+# NexusAI Statistics Julia — Docker ignore patterns
+
+# Julia artifacts
+.julia/
+~/.julia/
+*.ji
+*.so
+*.dll
+*.dylib
+
+# Build artifacts
+build/
+*.o
+*.a
+
+# Test artifacts
+test/runtests.jl
+test/*.jl
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Documentation
+*.md
+!README.md
+
+# Manifest/Project (copied explicitly in Dockerfile)
+Manifest.toml
+Project.toml

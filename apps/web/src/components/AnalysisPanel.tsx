@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import * as api from '@/lib/api';
+import { useJobPolling } from '@/lib/useJobPolling';
 import {
   ResponsiveContainer,
   BarChart,
@@ -46,21 +47,69 @@ export function AnalysisPanel({
   const [analysisType, setAnalysisType] = useState<api.AnalysisType>('describe');
   const [selected, setSelected] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
+  const [asyncMode, setAsyncMode] = useState(false);
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+  const [asyncResult, setAsyncResult] = useState<{
+    analysisType: api.AnalysisType;
+    result: Record<string, unknown>;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<api.AnalysisRun | null>(null);
   const [history, setHistory] = useState<api.AnalysisRun[]>([]);
+  const { job: trackedJob, error: pollError } = useJobPolling(trackedJobId);
 
   useEffect(() => {
     api.listAnalyses(projectId).then(setHistory).catch(() => undefined);
   }, [projectId]);
 
+  // When a tracked background job finishes, surface its real result.
+  useEffect(() => {
+    if (!trackedJob) return;
+    if (trackedJob.status === 'completed' && trackedJob.result) {
+      setAsyncResult({
+        analysisType: (trackedJob.params['analysisType'] as api.AnalysisType) ?? analysisType,
+        result: trackedJob.result,
+      });
+      api.listAnalyses(projectId).then(setHistory).catch(() => undefined);
+    }
+    if (trackedJob.status === 'failed') {
+      setError(trackedJob.errorMessage || 'Background analysis failed');
+    }
+  }, [trackedJob, projectId, analysisType]);
+
   function toggle(col: string) {
     setSelected((prev) => (prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]));
   }
 
+  const ANALYSIS_JOB_TYPES: Record<api.AnalysisType, api.JobType> = {
+    describe: 'analysis.describe',
+    correlation: 'analysis.correlation',
+    covariance: 'analysis.covariance',
+    linear_algebra: 'analysis.linear-algebra',
+    compare: 'analysis.compare',
+  };
+
   async function handleRun(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setAsyncResult(null);
+    if (asyncMode) {
+      setRunning(true);
+      try {
+        const job = await api.createJob({
+          jobType: ANALYSIS_JOB_TYPES[analysisType],
+          projectId,
+          datasetId: dataset.id,
+          columns: selected.length > 0 ? selected : undefined,
+        });
+        setTrackedJobId(job.id);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to queue analysis');
+      } finally {
+        setRunning(false);
+      }
+      return;
+    }
     setRunning(true);
     try {
       const run = await api.runAnalysis(projectId, {
@@ -77,7 +126,19 @@ export function AnalysisPanel({
     }
   }
 
-  const res = (result?.result ?? {}) as Record<string, unknown>;
+  async function handleCancelTracked() {
+    if (!trackedJobId) return;
+    try {
+      await api.cancelJob(trackedJobId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel job');
+    }
+  }
+
+  const display = result
+    ? { analysisType: result.analysisType, result: (result.result ?? {}) as Record<string, unknown> }
+    : asyncResult;
+  const res = (display?.result ?? {}) as Record<string, unknown>;
   const resColumns = (res['columns'] ?? []) as { name: string; count: number; missing: number; mean: number | null; median: number | null; std: number | null; min: number | null; max: number | null }[];
   const matrix = res['matrix'] as (number | null)[][] | undefined;
   const matrixCols = (res['columns'] ?? []) as string[];
@@ -124,12 +185,58 @@ export function AnalysisPanel({
             ))}
           </div>
         </div>
-        <div className="flex items-end">
-          <button type="submit" className="btn-primary w-full" disabled={running}>
-            {running ? 'Computing…' : 'Run analysis'}
+        <div className="flex items-end gap-3">
+          <button type="submit" className="btn-primary flex-1" disabled={running}>
+            {running ? (asyncMode ? 'Queued…' : 'Computing…') : asyncMode ? 'Queue analysis' : 'Run analysis'}
           </button>
         </div>
       </form>
+
+      <div className="flex items-center gap-2 mb-6">
+        <input
+          id="async-mode"
+          type="checkbox"
+          checked={asyncMode}
+          onChange={(e) => {
+            setAsyncMode(e.target.checked);
+            setTrackedJobId(null);
+            setAsyncResult(null);
+          }}
+        />
+        <label htmlFor="async-mode" className="text-sm text-surface-600 dark:text-surface-400">
+          Run in background (job queue — poll for completion, cancellable)
+        </label>
+      </div>
+
+      {trackedJob && !api.isTerminalJobStatus(trackedJob.status) && (
+        <div className="mb-6 p-4 border border-surface-200 dark:border-surface-700 rounded-lg">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm">
+              Job <span className="font-mono">{trackedJob.id.slice(0, 8)}…</span> — {trackedJob.status}
+              {trackedJob.stage ? ` (${trackedJob.stage})` : ''} · {trackedJob.progress}%
+            </p>
+            <button onClick={() => void handleCancelTracked()} className="btn-ghost text-sm">
+              Cancel
+            </button>
+          </div>
+          <div
+            className="mt-2 h-2 rounded-full bg-surface-200 dark:bg-surface-700 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={trackedJob.progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Background job progress: ${trackedJob.progress}% (${trackedJob.stage ?? trackedJob.status})`}
+          >
+            <div className="h-full bg-primary-600 dark:bg-primary-400 transition-all" style={{ width: `${trackedJob.progress}%` }} />
+          </div>
+        </div>
+      )}
+
+      {pollError && (
+        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-sm text-red-700 dark:text-red-400">{pollError}</p>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -137,9 +244,9 @@ export function AnalysisPanel({
         </div>
       )}
 
-      {result?.status === 'completed' && (
+      {display && (
         <div className="space-y-6">
-          {result.analysisType === 'describe' && (
+          {display.analysisType === 'describe' && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -167,9 +274,9 @@ export function AnalysisPanel({
             </div>
           )}
 
-          {(result.analysisType === 'correlation' || result.analysisType === 'covariance') && matrix && (
+          {(display.analysisType === 'correlation' || display.analysisType === 'covariance') && matrix && (
             <div className="overflow-x-auto">
-              <h3 className="font-semibold mb-1 capitalize">{result.analysisType} matrix</h3>
+              <h3 className="font-semibold mb-1 capitalize">{display.analysisType} matrix</h3>
               <p className="text-xs text-surface-500 mb-3">
                 {String(res['method'] ?? '')} · missing: {String(res['missingPolicy'] ?? 'pairwise')}
               </p>
@@ -192,7 +299,7 @@ export function AnalysisPanel({
                         <td
                           key={j}
                           className="py-1 px-2 text-center tabular-nums text-xs"
-                          style={{ backgroundColor: result.analysisType === 'correlation' ? heatColor(v) : undefined }}
+                          style={{ backgroundColor: display.analysisType === 'correlation' ? heatColor(v) : undefined }}
                           title={v === null ? 'undefined' : String(v)}
                         >
                           {v === null ? '∅' : fmt(v)}
@@ -205,7 +312,7 @@ export function AnalysisPanel({
             </div>
           )}
 
-          {result.analysisType === 'linear_algebra' && (
+          {display.analysisType === 'linear_algebra' && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { label: 'Dimensions', value: `${String(res['rows'])} × ${String(res['cols'])}` },
@@ -224,7 +331,7 @@ export function AnalysisPanel({
             </div>
           )}
 
-          {result.analysisType === 'compare' && (
+          {display.analysisType === 'compare' && (
             <div>
               <p className="text-sm mb-3">
                 <span className="badge-success badge mr-2">{String(res['agreed'] ?? 0)} agree</span>

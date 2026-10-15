@@ -1,0 +1,274 @@
+# NexusAI — Render Deployment Configuration
+#
+# This file defines all services for deployment on Render.
+# Deploy with: render deploy (requires Render CLI) or manually via dashboard.
+#
+# Services (in dependency order):
+# 1. PostgreSQL (managed) — Database
+# 2. Redis (managed) — Job queue
+# 3. API (Web Service) — Express API + Worker (Background Worker)
+# 4. ML Python (Web Service) — FastAPI ML service
+# 5. Statistics Julia (Web Service) — Julia statistics service
+# 6. Web (Web Service) — Next.js frontend
+#
+# IMPORTANT: Render services do NOT share localhost.
+# Use the service's internal DNS name (e.g., nexusai-api.onrender.com) for inter-service communication.
+# Private networking is available on paid plans; otherwise use public URLs with service keys.
+
+services:
+  # ============================================
+  # 1. DATABASE — Managed PostgreSQL (Supabase or Render PostgreSQL)
+  # ============================================
+  # Not defined here — provision separately in Render Dashboard or use Supabase.
+  # Add DATABASE_URL to the API service environment variables.
+
+  # ============================================
+  # 2. REDIS — Managed Redis (Render Key Value / Upstash / Railway)
+  # ============================================
+  # Not defined here — provision separately.
+  # Add REDIS_URL to the API and Worker services.
+
+  # ============================================
+  # 3. API — Express + TypeScript (Web Service)
+  # ============================================
+  - type: web
+    name: nexusai-api
+    runtime: docker
+    repo: https://github.com/<YOUR_GITHUB_ORG>/nexusai
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    # Build command runs automatically via Dockerfile
+    # Start command defined in Dockerfile CMD
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3001"
+      - key: API_VERSION
+        value: v1
+      # Database — REQUIRED
+      - key: DATABASE_URL
+        sync: false
+        # Set in dashboard: postgresql://user:pass@host:port/db
+      # Supabase Auth — REQUIRED
+      - key: SUPABASE_URL
+        sync: false
+        # Set in dashboard: https://your-project-ref.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false
+        # Set in dashboard: anon key from Supabase
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+        # Set in dashboard: service role key from Supabase (secret)
+      # CORS — REQUIRED (set to your frontend URL)
+      - key: CORS_ORIGIN
+        value: https://nexusai-web.onrender.com
+      # Storage
+      - key: STORAGE_DRIVER
+        value: supabase
+      - key: STORAGE_BUCKET
+        value: datasets
+      - key: MAX_UPLOAD_MB
+        value: "10"
+      # ML Service (internal) — REQUIRED
+      - key: ML_SERVICE_URL
+        value: https://nexusai-ml.onrender.com
+      - key: ML_SERVICE_KEY
+        sync: false
+        # Set in dashboard: same as ML service's ML_SERVICE_KEY (secret)
+      - key: ML_TIMEOUT_MS
+        value: "120000"
+      # Julia Statistics (internal) — REQUIRED
+      - key: JULIA_SERVICE_URL
+        value: https://nexusai-stats.onrender.com
+      - key: JULIA_SERVICE_KEY
+        sync: false
+        # Set in dashboard: same as Julia service's JULIA_SERVICE_KEY (secret)
+      - key: JULIA_TIMEOUT_MS
+        value: "60000"
+      # Redis / Job Queue — REQUIRED for async jobs
+      - key: REDIS_URL
+        sync: false
+        # Set in dashboard: redis://user:pass@host:port (secret)
+      - key: WORKER_CONCURRENCY
+        value: "2"
+      - key: JOB_MAX_ATTEMPTS
+        value: "3"
+      - key: JOB_BACKOFF_MS
+        value: "5000"
+      # LLM (optional)
+      - key: LLM_PROVIDER
+        value: openai
+      - key: LLM_API_KEY
+        sync: false
+        # Set in dashboard if using LLM features
+      - key: LLM_MODEL
+        value: gpt-4o-mini
+    healthCheckPath: /api/v1/health
+    autoDeploy: false
+    # Scaling: start with 1 instance, scale horizontally as needed
+    # Worker runs as a separate Background Worker service (see below)
+
+  # ============================================
+  # 3b. WORKER — BullMQ Worker (Background Worker)
+  # ============================================
+  - type: background
+    name: nexusai-worker
+    runtime: docker
+    repo: https://github.com/<YOUR_GITHUB_ORG>/nexusai
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    # Override CMD to run the worker instead of the API server
+    startCommand: node dist/worker.js
+    envVars:
+      # Same as API service — copy all env vars
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3001"
+      - key: API_VERSION
+        value: v1
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://nexusai-web.onrender.com
+      - key: STORAGE_DRIVER
+        value: supabase
+      - key: STORAGE_BUCKET
+        value: datasets
+      - key: MAX_UPLOAD_MB
+        value: "10"
+      - key: ML_SERVICE_URL
+        value: https://nexusai-ml.onrender.com
+      - key: ML_SERVICE_KEY
+        sync: false
+      - key: ML_TIMEOUT_MS
+        value: "120000"
+      - key: JULIA_SERVICE_URL
+        value: https://nexusai-stats.onrender.com
+      - key: JULIA_SERVICE_KEY
+        sync: false
+      - key: JULIA_TIMEOUT_MS
+        value: "60000"
+      - key: REDIS_URL
+        sync: false
+      - key: WORKER_CONCURRENCY
+        value: "2"
+      - key: JOB_MAX_ATTEMPTS
+        value: "3"
+      - key: JOB_BACKOFF_MS
+        value: "5000"
+      - key: LLM_PROVIDER
+        value: openai
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: gpt-4o-mini
+    # Background workers don't need healthCheckPath (no HTTP server)
+    # But Render expects the process to stay alive
+    autoDeploy: false
+
+  # ============================================
+  # 4. ML PYTHON — FastAPI (Web Service)
+  # ============================================
+  - type: web
+    name: nexusai-ml
+    runtime: docker
+    repo: https://github.com/<YOUR_GITHUB_ORG>/nexusai
+    dockerfilePath: ./services/ml-python/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: LOG_LEVEL
+        value: info
+      # Must match API's ML_SERVICE_KEY
+      - key: ML_SERVICE_KEY
+        sync: false
+        # Set in dashboard: same secret as API's ML_SERVICE_KEY
+      - key: MAX_TRAIN_ROWS
+        value: "200000"
+      - key: MAX_TRAIN_COLUMNS
+        value: "200"
+      - key: MAX_FEATURES
+        value: "100"
+    healthCheckPath: /health
+    autoDeploy: false
+    # Private service recommended (not publicly accessible)
+    # On paid plans: set to private and use internal DNS
+
+  # ============================================
+  # 5. STATISTICS JULIA — HTTP.jl (Web Service)
+  # ============================================
+  - type: web
+    name: nexusai-stats
+    runtime: docker
+    repo: https://github.com/<YOUR_GITHUB_ORG>/nexusai
+    dockerfilePath: ./services/statistics-julia/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: PORT
+        value: "8001"
+      # Must match API's JULIA_SERVICE_KEY
+      - key: JULIA_SERVICE_KEY
+        sync: false
+        # Set in dashboard: same secret as API's JULIA_SERVICE_KEY
+    healthCheckPath: /health
+    autoDeploy: false
+    # Private service recommended
+
+  # ============================================
+  # 6. WEB — Next.js Frontend (Web Service)
+  # ============================================
+  - type: web
+    name: nexusai-web
+    runtime: docker
+    repo: https://github.com/<YOUR_GITHUB_ORG>/nexusai
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: .
+    envVars:
+      # API URL — MUST match the deployed API service URL
+      - key: NEXT_PUBLIC_API_URL
+        value: https://nexusai-api.onrender.com
+      - key: NEXT_PUBLIC_API_VERSION
+        value: v1
+      # Supabase Auth — REQUIRED (same as API)
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+        # Set in dashboard: https://your-project-ref.supabase.co
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+        # Set in dashboard: anon key from Supabase
+      - key: NEXT_PUBLIC_APP_NAME
+        value: NexusAI
+      - key: NEXT_PUBLIC_APP_VERSION
+        value: 0.2.0
+      - key: NEXT_PUBLIC_APP_DESCRIPTION
+        value: "Plataforma de Análise de Dados e Machine Learning"
+    healthCheckPath: /
+    autoDeploy: false
+
+# ============================================
+# DEPLOYMENT ORDER & NOTES
+# ============================================
+# 1. Provision PostgreSQL (Supabase or Render) and Redis (Render Key Value / Upstash)
+# 2. Create all 6 services in Render Dashboard (or via render.yaml)
+# 3. Set ALL sync: false variables in the dashboard (secrets, DATABASE_URL, REDIS_URL, service keys)
+# 4. Deploy in order: ML → Julia → API → Worker → Web
+#    (ML and Julia must be up before API health/ready passes)
+# 5. Configure Supabase Auth redirect URLs:
+#    - Site URL: https://nexusai-web.onrender.com
+#    - Redirect URLs: https://nexusai-web.onrender.com/auth/reset-password
+# 6. Configure Supabase Storage bucket 'datasets' (private)
+# 7. Test end-to-end:
+#    - https://nexusai-web.onrender.com → landing page
+#    - Sign up → dashboard with real metrics
+#    - Create project → upload CSV → run analysis (sync + background)
+#    - Create experiment → train model → compare runs
+#    - Check /jobs for job history

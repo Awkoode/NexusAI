@@ -2,6 +2,8 @@
 -- Created at: 2026-10-14
 -- Description: Creates datasets table for CSV file storage metadata
 
+-- UP
+
 CREATE TABLE IF NOT EXISTS datasets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -75,3 +77,16 @@ CREATE POLICY "Users can delete own project datasets" ON datasets
         AND projects.user_id = auth.uid()
     )
   );
+
+-- DOWN
+DROP POLICY IF EXISTS "Users can delete own project datasets" ON datasets;
+DROP POLICY IF EXISTS "Users can update own project datasets" ON datasets;
+DROP POLICY IF EXISTS "Users can insert own project datasets" ON datasets;
+DROP POLICY IF EXISTS "Users can view own project datasets" ON datasets;
+ALTER TABLE datasets DISABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS update_datasets_updated_at ON datasets;
+DROP INDEX IF EXISTS idx_datasets_created_at;
+DROP INDEX IF EXISTS idx_datasets_status;
+DROP INDEX IF EXISTS idx_datasets_user_id;
+DROP INDEX IF EXISTS idx_datasets_project_id;
+DROP TABLE IF EXISTS datasets;

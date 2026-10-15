@@ -2,6 +2,8 @@
 -- Created at: 2026-10-14
 -- Description: Creates profiles and projects tables with RLS policies
 
+-- UP
+
 -- ============================================
 -- Schema migrations tracking table
 -- ============================================
@@ -107,6 +109,8 @@ CREATE POLICY "Users can delete own projects" ON projects
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Bypass RLS for this insert (trigger runs as SECURITY DEFINER)
+  SET LOCAL row_security = off;
   INSERT INTO public.profiles (id, display_name)
   VALUES (NEW.id, NEW.raw_user_meta_data->>'full_name' OR NEW.raw_user_meta_data->>'name');
   RETURN NEW;
@@ -118,3 +122,27 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- DOWN
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user();
+DROP POLICY IF EXISTS "Users can delete own projects" ON projects;
+DROP POLICY IF EXISTS "Users can update own projects" ON projects;
+DROP POLICY IF EXISTS "Users can insert own projects" ON projects;
+DROP POLICY IF EXISTS "Users can view own projects" ON projects;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update own projects" ON projects;
+DROP POLICY IF EXISTS "Users can insert own projects" ON projects;
+DROP POLICY IF EXISTS "Users can view own projects" ON projects;
+ALTER TABLE projects DISABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+DROP FUNCTION IF EXISTS update_updated_at_column();
+DROP INDEX IF EXISTS idx_projects_created_at;
+DROP INDEX IF EXISTS idx_projects_user_id;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS profiles;
+DROP TABLE IF EXISTS schema_migrations;
