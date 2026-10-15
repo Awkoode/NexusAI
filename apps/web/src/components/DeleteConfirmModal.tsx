@@ -1,5 +1,7 @@
 'use client';
 
+import { useAnimatedPresence } from '@/lib/useAnimatedPresence';
+
 interface DeleteConfirmModalProps {
   projectName: string;
   onConfirm: () => void;
@@ -7,9 +9,10 @@ interface DeleteConfirmModalProps {
 }
 
 export function DeleteConfirmModal({ projectName, onConfirm, onCancel }: DeleteConfirmModalProps) {
+  const { isClosing, close } = useAnimatedPresence(220, true);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="card w-full max-w-md p-6">
+    <div className={`modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 ${isClosing ? 'is-closing' : ''}`}>
+      <div className={`card modal-panel w-full max-w-md p-6 ${isClosing ? 'is-closing' : ''}`}>
         <div className="flex items-start gap-4">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
             <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -25,11 +28,12 @@ export function DeleteConfirmModal({ projectName, onConfirm, onCancel }: DeleteC
         </div>
 
         <div className="flex items-center justify-end gap-3 mt-6">
-          <button onClick={onCancel} className="btn-ghost">
+          <button onClick={() => close(onCancel)} className="btn-ghost" disabled={isClosing}>
             Cancel
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => close(onConfirm)}
+            disabled={isClosing}
             className="btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 dark:bg-red-500 dark:hover:bg-red-600"
           >
             Delete

@@ -46,7 +46,3 @@ docker-compose*.yml
 # Documentation
 *.md
 !README.md
-
-# Manifest/Project (copied explicitly in Dockerfile)
-Manifest.toml
-Project.toml

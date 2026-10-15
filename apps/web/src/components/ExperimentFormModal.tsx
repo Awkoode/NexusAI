@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import * as api from '@/lib/api';
+import { useAnimatedPresence } from '@/lib/useAnimatedPresence';
 
 interface ExperimentFormModalProps {
   datasets: api.Dataset[];
@@ -10,6 +11,7 @@ interface ExperimentFormModalProps {
 }
 
 export function ExperimentFormModal({ datasets, onSubmit, onCancel }: ExperimentFormModalProps) {
+  const { isClosing, close } = useAnimatedPresence(220, true);
   const readyDatasets = datasets.filter((d) => d.status === 'ready');
   const [datasetId, setDatasetId] = useState(readyDatasets[0]?.id ?? '');
   const [taskType, setTaskType] = useState<api.ExperimentTaskType>('regression');
@@ -82,6 +84,7 @@ export function ExperimentFormModal({ datasets, onSubmit, onCancel }: Experiment
         testSize,
         randomState,
       });
+      close(onCancel);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create experiment');
     } finally {
@@ -90,8 +93,8 @@ export function ExperimentFormModal({ datasets, onSubmit, onCancel }: Experiment
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 overflow-y-auto">
-      <div className="card w-full max-w-lg p-6 my-8">
+    <div className={`modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 overflow-y-auto ${isClosing ? 'is-closing' : ''}`}>
+      <div className={`card modal-panel w-full max-w-lg p-6 my-8 ${isClosing ? 'is-closing' : ''}`}>
         <h2 className="text-xl font-bold text-surface-900 dark:text-surface-50 mb-6">
           New experiment
         </h2>
@@ -102,7 +105,7 @@ export function ExperimentFormModal({ datasets, onSubmit, onCancel }: Experiment
               Import a CSV dataset first — only ready datasets can be used for training.
             </p>
             <div className="flex justify-end mt-6">
-              <button onClick={onCancel} className="btn-ghost">Close</button>
+              <button onClick={() => close(onCancel)} className="btn-ghost" disabled={isClosing}>Close</button>
             </div>
           </div>
         ) : (
@@ -238,7 +241,7 @@ export function ExperimentFormModal({ datasets, onSubmit, onCancel }: Experiment
             )}
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button type="button" onClick={onCancel} className="btn-ghost" disabled={isSubmitting}>
+              <button type="button" onClick={() => close(onCancel)} className="btn-ghost" disabled={isSubmitting || isClosing}>
                 Cancel
               </button>
               <button type="submit" className="btn-primary" disabled={isSubmitting}>

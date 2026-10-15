@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useAnimatedPresence } from '@/lib/useAnimatedPresence';
 
 function DashboardIcon() {
   return (
@@ -55,7 +56,12 @@ function BrandMark() {
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const {
+    isPresent: drawerOpen,
+    isClosing: drawerClosing,
+    open: openDrawer,
+    close: closeDrawer,
+  } = useAnimatedPresence(220);
   const { user, signOut } = useAuth();
 
   async function handleSignOut() {
@@ -72,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               href={item.href}
               aria-current={active ? 'page' : undefined}
-              onClick={() => setDrawerOpen(false)}
+              onClick={() => closeDrawer()}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 ${
                 active
                   ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
@@ -123,17 +129,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile drawer */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Menu de navegação">
+        <div className={`fixed inset-0 z-50 md:hidden presence-backdrop ${drawerClosing ? 'is-closing' : ''}`} role="dialog" aria-modal="true" aria-label="Menu de navegação" aria-hidden={drawerClosing}>
           <div
             className="absolute inset-0 bg-black/50"
-            onClick={() => setDrawerOpen(false)}
+            onClick={() => closeDrawer()}
             aria-hidden="true"
           />
-          <div className="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-surface-900 border-r border-surface-200 dark:border-surface-800 px-4 py-6 flex flex-col animate-in">
+          <div className={`absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-surface-900 border-r border-surface-200 dark:border-surface-800 px-4 py-6 flex flex-col presence-panel presence-panel-left ${drawerClosing ? 'is-closing' : ''}`}>
             <div className="flex items-center justify-between">
               <BrandMark />
               <button
-                onClick={() => setDrawerOpen(false)}
+                onClick={() => closeDrawer()}
                 className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 aria-label="Fechar menu"
               >
@@ -164,7 +170,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Mobile top bar */}
         <header className="md:hidden sticky top-0 z-40 flex items-center gap-3 px-4 h-16 border-b border-surface-200 dark:border-surface-800 bg-white/90 dark:bg-surface-950/90 backdrop-blur-sm">
           <button
-            onClick={() => setDrawerOpen(true)}
+            onClick={openDrawer}
             className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
             aria-label="Abrir menu"
             aria-expanded={drawerOpen}

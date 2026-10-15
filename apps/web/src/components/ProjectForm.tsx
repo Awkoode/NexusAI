@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { Project } from '@/lib/api';
+import { useAnimatedPresence } from '@/lib/useAnimatedPresence';
 
 interface ProjectFormProps {
   project?: Project;
@@ -10,6 +11,7 @@ interface ProjectFormProps {
 }
 
 export function ProjectForm({ project, onSubmit, onCancel }: ProjectFormProps) {
+  const { isClosing, close } = useAnimatedPresence(220, true);
   const [name, setName] = useState(project?.name || '');
   const [description, setDescription] = useState(project?.description || '');
   const [isLoading, setIsLoading] = useState(false);
@@ -26,6 +28,7 @@ export function ProjectForm({ project, onSubmit, onCancel }: ProjectFormProps) {
       } else {
         await onSubmit(name, description || undefined);
       }
+      close(onCancel);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save project');
     } finally {
@@ -34,8 +37,8 @@ export function ProjectForm({ project, onSubmit, onCancel }: ProjectFormProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="card w-full max-w-md p-6">
+    <div className={`modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 ${isClosing ? 'is-closing' : ''}`}>
+      <div className={`card modal-panel w-full max-w-md p-6 ${isClosing ? 'is-closing' : ''}`}>
         <h2 className="text-xl font-bold text-surface-900 dark:text-surface-50 mb-6">
           {project ? 'Edit Project' : 'New Project'}
         </h2>
@@ -76,9 +79,9 @@ export function ProjectForm({ project, onSubmit, onCancel }: ProjectFormProps) {
           <div className="flex items-center justify-end gap-3 pt-4">
             <button
               type="button"
-              onClick={onCancel}
+              onClick={() => close(onCancel)}
               className="btn-ghost"
-              disabled={isLoading}
+              disabled={isLoading || isClosing}
             >
               Cancel
             </button>

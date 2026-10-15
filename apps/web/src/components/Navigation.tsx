@@ -4,11 +4,17 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useAnimatedPresence } from '@/lib/useAnimatedPresence';
 
 export function Navigation() {
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const {
+    isPresent: mobileMenuOpen,
+    isClosing: mobileMenuClosing,
+    open: openMobileMenu,
+    close: closeMobileMenu,
+  } = useAnimatedPresence(220);
   const { user, signOut, loading } = useAuth();
 
   useEffect(() => {
@@ -111,8 +117,8 @@ export function Navigation() {
           {/* Mobile Menu Button */}
           <button
             className="md:hidden p-2 rounded-lg text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-expanded={mobileMenuOpen}
+            onClick={() => (mobileMenuOpen && !mobileMenuClosing ? closeMobileMenu() : openMobileMenu())}
+            aria-expanded={mobileMenuOpen && !mobileMenuClosing}
             aria-controls="mobile-menu"
             aria-label={mobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
           >
@@ -146,9 +152,10 @@ export function Navigation() {
         {mobileMenuOpen && (
           <div
             id="mobile-menu"
-            className="md:hidden py-4 border-t border-surface-200 dark:border-surface-800 animate-in"
+            className={`md:hidden py-4 border-t border-surface-200 dark:border-surface-800 presence-panel ${mobileMenuClosing ? 'is-closing' : ''}`}
             role="navigation"
             aria-label="Menu mobile"
+            aria-hidden={mobileMenuClosing}
           >
             <div className="flex flex-col gap-2">
               {navLinks.map((link) => (
@@ -160,7 +167,7 @@ export function Navigation() {
                       ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
                       : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
                   }`}
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={() => closeMobileMenu()}
                   aria-current={pathname === link.href ? 'page' : undefined}
                 >
                   {link.label}
@@ -178,7 +185,7 @@ export function Navigation() {
                   <Link
                     href="/auth/login"
                     className="btn-primary mt-2 w-full text-center block"
-                    onClick={() => setMobileMenuOpen(false)}
+                    onClick={() => closeMobileMenu()}
                   >
                     Entrar
                   </Link>

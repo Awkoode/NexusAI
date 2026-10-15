@@ -54,7 +54,6 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
 
   async function handleUpload(file: File, name?: string) {
     await api.uploadDataset(params.projectId, file, name);
-    setIsUploadOpen(false);
     await fetchAll();
   }
 
@@ -72,7 +71,6 @@ export default function ProjectDetailPage({ params }: { params: { projectId: str
 
   async function handleCreateExperiment(input: api.CreateExperimentInput) {
     await api.createExperiment(input);
-    setIsExperimentOpen(false);
     await fetchAll();
   }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useAnimatedPresence } from '@/lib/useAnimatedPresence';
 
 interface UploadDatasetModalProps {
   onUpload: (file: File, name?: string) => Promise<void>;
@@ -10,6 +11,7 @@ interface UploadDatasetModalProps {
 const MAX_UPLOAD_MB = 10;
 
 export function UploadDatasetModal({ onUpload, onCancel }: UploadDatasetModalProps) {
+  const { isClosing, close } = useAnimatedPresence(220, true);
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -45,6 +47,7 @@ export function UploadDatasetModal({ onUpload, onCancel }: UploadDatasetModalPro
     setError(null);
     try {
       await onUpload(file, name.trim() || undefined);
+      close(onCancel);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload dataset');
     } finally {
@@ -53,8 +56,8 @@ export function UploadDatasetModal({ onUpload, onCancel }: UploadDatasetModalPro
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="card w-full max-w-md p-6">
+    <div className={`modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 ${isClosing ? 'is-closing' : ''}`}>
+      <div className={`card modal-panel w-full max-w-md p-6 ${isClosing ? 'is-closing' : ''}`}>
         <h2 className="text-xl font-bold text-surface-900 dark:text-surface-50 mb-2">
           Import CSV dataset
         </h2>
@@ -99,7 +102,7 @@ export function UploadDatasetModal({ onUpload, onCancel }: UploadDatasetModalPro
           )}
 
           <div className="flex items-center justify-end gap-3 pt-4">
-            <button type="button" onClick={onCancel} className="btn-ghost" disabled={isLoading}>
+            <button type="button" onClick={() => close(onCancel)} className="btn-ghost" disabled={isLoading || isClosing}>
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={isLoading || !file}>

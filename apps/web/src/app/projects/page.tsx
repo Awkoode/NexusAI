@@ -49,7 +49,6 @@ export default function ProjectsPage() {
     try {
       await api.createProject(name, description);
       await fetchProjects();
-      setIsFormOpen(false);
     } catch (err) {
       throw err;
     }
@@ -59,7 +58,6 @@ export default function ProjectsPage() {
     try {
       await api.updateProject(id, name, description);
       await fetchProjects();
-      setEditingProject(null);
     } catch (err) {
       throw err;
     }
