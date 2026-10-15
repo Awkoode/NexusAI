@@ -1,0 +1,45 @@
+PROMPT PARA O LOVABLE — FRONTEND DO NEXUSAI (somente frontend)
+
+CONTEXTO
+Estamos reconstruindo APENAS o frontend (React + Vite + Tailwind + shadcn-ui) da plataforma NexusAI, uma SaaS de análise de dados e machine learning. O backend JÁ EXISTE e NÃO deve ser recriado: é uma API Express rodando em http://localhost:3001 com prefixo /api/v1, autenticação via Supabase Auth (JWT enviado como `Authorization: Bearer <token>`), e todas as regras de negócio prontas. Também já existem os microserviços (ML Python :8000 e Julia :8001), mas o frontend NUNCA fala com eles diretamente — tudo passa pela API :3001.
+
+REGRA DE OURO — NÃO INVENTE NADA
+- Use EXCLUSIVAMENTE os endpoints listados abaixo. Não crie endpoints novos, não mude paths, não adicione query params que não existam.
+- Não crie backend, banco de dados, autenticação própria, nem dados mockados/fake. Todos os dados vêm da API real; enquanto carrega mostre skeleton, em erro mostre alerta com retry, e em lista vazia mostre empty state com ação.
+- Não adicione páginas além das 10 listadas abaixo. Nada de Settings, Billing, Admin, Notifications, Team, Pricing, Blog ou qualquer outra página extra.
+- Não adicione features além das descritas (sem export PDF, sem gráficos 3D, sem chat IA, sem tour guiado, sem dark/light toggle — o tema é escuro fixo).
+
+CONFIGURAÇÃO
+- Variáveis de ambiente: VITE_API_URL (default http://localhost:3001), VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (Supabase Auth: login, signup, logout, reset de senha via supabase-js).
+- Cliente HTTP: um wrapper `fetch` que injeta o JWT da sessão Supabase e trata o envelope `{ success, data, error, meta }`.
+
+CONTRATO DA API (imutável)
+- GET /api/v1/health (liveness, sem auth)
+- Projetos (auth): GET /api/v1/projects | POST /api/v1/projects {name, description} | GET/PATCH/DELETE /api/v1/projects/:id
+- Datasets (auth): POST /api/v1/projects/:projectId/datasets (multipart, campo `file`, só CSV até 10MB) | GET /api/v1/projects/:projectId/datasets | GET /api/v1/datasets/:id | GET /api/v1/datasets/:id/preview?limit=&offset= (máx 100 linhas) | GET /api/v1/datasets/:id/profile (estatísticas por coluna) | DELETE /api/v1/datasets/:id
+- Experimentos ML (auth): POST /api/v1/experiments {projectId, datasetId, name?, taskType: regression|classification, modelType: linear_regression|random_forest_regressor|logistic_regression|random_forest_classifier, targetColumn, featureColumns[], testSize?, randomState?} | GET /api/v1/projects/:projectId/experiments | GET /api/v1/experiments/:id | GET /api/v1/experiments/:id/runs | POST /api/v1/experiments/:id/run | DELETE /api/v1/experiments/:id. Métricas de regressão: MAE/RMSE/R². Classificação: accuracy/precision/recall/F1 + matriz de confusão.
+- Análises estatísticas (auth): POST /api/v1/projects/:projectId/analyses {datasetId, analysisType: describe|correlation|covariance|linear_algebra|compare, columns?, missingPolicy?, maxRows?} | GET /api/v1/projects/:projectId/analyses | GET /api/v1/analyses/:id | DELETE /api/v1/analyses/:id
+- Jobs assíncronos (auth): POST /api/v1/jobs {jobType: dataset.profile|ml.train|analysis.describe|analysis.correlation|analysis.covariance|analysis.linear-algebra|analysis.compare, projectId, datasetId, ...params} → 202 | GET /api/v1/jobs?page=&limit=&status=&jobType=&projectId= | GET /api/v1/jobs/:id (traz progress 0-100 + stage) | POST /api/v1/jobs/:id/cancel. Status: queued|active|completed|failed|cancelled. Polling com backoff que para em estado terminal.
+
+AS 10 PÁGINAS (construir exatamente estas)
+1. `/` — Landing pública (não logado) com proposta de valor + botões Login/Cadastro; se logado, vira Dashboard: 4 cards de métricas (projetos, datasets, experimentos, jobs — via fan-out das listagens), gráfico de barras de jobs por estado, listas recentes (jobs, experimentos, análises). Falha parcial de uma fonte não quebra o resto.
+2. `/auth/login` — email + senha (Supabase signInWithPassword), link para signup e forgot-password, erro amigável.
+3. `/auth/signup` — nome, email, senha (Supabase signUp), redireciona ao login.
+4. `/auth/forgot-password` — envia email de recuperação.
+5. `/auth/reset-password` — define nova senha (rota do redirect do Supabase).
+6. `/projects` — grade de cards de projeto (nome, descrição, data, contadores) com busca, modal criar/editar (nome+descrição), excluir com confirmação.
+7. `/projects/:projectId` — detalhe: header do projeto, aba/tab Datasets (lista + botão upload CSV via modal + status uploaded/processing/ready/failed) e aba Experimentos (lista + botão novo experimento via modal: dataset, nome, taskType, modelType, targetColumn, featureColumns, testSize, randomState).
+8. `/projects/:projectId/datasets/:datasetId` — exploração: metadados, preview paginado (20 linhas/página), estatísticas por coluna, gráfico de valores ausentes por coluna, top categorias, histograma (da amostra), scatter plot de 2 colunas numéricas (máx 500 pts, avisar que é amostra), matriz de correlação com cores divergentes.
+9. `/projects/:projectId/experiments/:experimentId` — detalhe do experimento: config, última run com cards de métricas (MAE/RMSE/R² OU Acc/Prec/Rec/F1 conforme a tarefa — nunca misturar), heatmap da matriz de confusão (só classificação, com valores além da cor), comparação/ranking de runs (só dentro da mesma tarefa), botão reexecutar, histórico de runs.
+10. `/jobs` — central de execuções: tabela paginada (tipo, projeto, estado com badge, progresso %, duração, erro sanitizado), botão cancelar (só queued/active), polling controlado, filtros por status e tipo.
+
+PAINEL DE ANÁLISES (dentro das páginas 7 e 8)
+- Seletor de tipo (describe/correlation/covariance/linear_algebra/compare) + colunas + modo sync ou background (background cria job e mostra progresso por estágio + cancelar).
+- Resultado: descritivas em tabela, correlação/covariância em heatmap, comparação Python×Julia com flags de concordância, histórico de análises do projeto com excluir.
+
+LAYOUT E DESIGN
+- Tema escuro fixo, sidebar fixa no desktop / drawer no mobile, breadcrumbs, links ativos, skip-to-content, foco visível, `prefers-reduced-motion`, tabelas com scroll horizontal, modais responsivos. Componentes base: Button, Input, Select, Card, Modal, Badge de status, Table, Tooltip, Skeleton, EmptyState, Pagination, ErrorAlert com retry.
+- Gráficos: usar Recharts (ou lib equivalente), com tooltips, legendas, eixos legíveis e estados vazios. Acessibilidade: informação nunca depende só de cor.
+
+ENTREGA ESPERADA
+Projeto React+Vite+Tailwind+shadcn completo, as 10 rotas funcionando contra a API real, AuthContext com Supabase, build sem erros. Nada além disso.
