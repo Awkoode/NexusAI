@@ -40,7 +40,7 @@ O NexusAI segue uma arquitetura **modular, orientada a serviços** com separaç�
 - **Protocolo**: HTTP/JSON sobre REST
 - **Versionamento**: Path-based (`/api/v1/...`)
 - **Autenticação**: JWT Bearer tokens (Fase 2)
-- **Proxy**: Next.js rewrites para `/api/proxy/*` → `NEXT_PUBLIC_API_URL/api/*` (evita CORS em dev)
+- **CORS**: frontend roda na porta 3000 (`CORS_ORIGIN=http://localhost:3000`), mesma origem configurada no backend
 
 ### API ↔ Serviços Futuros (Python/Julia)
 - **Protocolo**: HTTP/JSON (síncrono) + Redis/BullMQ (assíncrono, Fase 3)
@@ -187,7 +187,7 @@ CREATE POLICY dataset_access ON datasets
 **Status**: Aceito
 **Decisão**: 
 - Backend: `.env` na raiz (validado com Zod no bootstrap)
-- Frontend: `.env.local` em `apps/web/` apenas com `NEXT_PUBLIC_*`
+- Frontend: `.env` em `apps/web/` apenas com `VITE_*` (nunca segredos)
 **Consequências**:
 - ✅ Segredos nunca vazam para o bundle do cliente
 - ✅ Validação early-fail no backend
@@ -394,7 +394,7 @@ logger.error('Payment failed', { orderId: '456' }, error); // error.stack inclu�
 
 ## 9. Referências
 
-- [Next.js 14 App Router Docs](https://nextjs.org/docs/app)
+- [TanStack Router Docs](https://tanstack.com/router/latest/docs)
 - [Express.js Best Practices](https://expressjs.com/en/advanced/best-practice-performance.html)
 - [Zod Documentation](https://zod.dev/)
 - [Tailwind CSS Dark Mode](https://tailwindcss.com/docs/dark-mode)

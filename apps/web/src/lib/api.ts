@@ -1,602 +1,169 @@
-'use client';
+import { supabase } from "./supabase";
 
-import { supabase } from '@/context/AuthContext';
+const BASE =
+  ((import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:3001").replace(/\/$/, "") +
+  "/api/v1";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export type Meta = { total?: number; page?: number; limit?: number; totalPages?: number; [k: string]: unknown };
+export type Envelope<T> = { success: boolean; data: T; error?: unknown; meta?: Meta };
 
-async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
-  let accessToken: string | null = null;
-
-  if (supabase) {
-    const { data: { session } } = await supabase.auth.getSession();
-    accessToken = session?.access_token ?? null;
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((options.headers as Record<string, string>) || {}),
-  };
-
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
-
-  return fetch(`${API_URL}${url}`, {
-    ...options,
-    headers,
-  });
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type DatasetStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
-
-export interface Dataset {
-  id: string;
-  projectId: string;
-  name: string;
-  originalFilename: string;
-  mimeType: string;
-  fileSizeBytes: number;
-  rowCount: number | null;
-  columnCount: number | null;
-  status: DatasetStatus;
-  errorMessage?: string | null;
-  schemaJson?: {
-    columns: {
-      name: string;
-      index: number;
-      type: string;
-      nonNullCount: number;
-      nullCount: number;
-      distinctCount: number;
-    }[];
-  } | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DatasetPreview {
-  datasetId: string;
-  headers: string[];
-  columnTypes: string[];
-  rows: string[][];
-  totalRows: number;
-  previewRowCount: number;
-  limit: number;
-  offset: number;
-}
-
-export interface DatasetColumnProfile {
-  name: string;
-  index: number;
-  type: string;
-  nonNullCount: number;
-  nullCount: number;
-  distinctCount: number;
-  numericStats?: {
-    count: number;
-    mean: number;
-    median: number;
-    stdDev: number;
-    min: number;
-    max: number;
-    q1: number;
-    q3: number;
-    distinctCount: number;
-  };
-  categoricalStats?: {
-    count: number;
-    distinctCount: number;
-    topValues: { value: string; count: number; frequency: number }[];
-  };
-}
-
-export interface DatasetProfile {
-  datasetId: string;
-  rowCount: number;
-  columnCount: number;
-  totalCells: number;
-  missingCells: number;
-  missingPercentage: number;
-  numericColumnCount: number;
-  categoricalColumnCount: number;
-  fileSizeBytes: number;
-  columns: DatasetColumnProfile[];
-}
-
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: Record<string, unknown>;
-  };
-  meta?: {
-    timestamp: string;
-    version: string;
-  };
-}
-
-export async function listProjects(): Promise<Project[]> {
-  const response = await fetchWithAuth('/api/v1/projects');
-  const data: ApiResponse<Project[]> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch projects');
-  }
-
-  return data.data || [];
-}
-
-export async function createProject(name: string, description?: string): Promise<Project> {
-  const response = await fetchWithAuth('/api/v1/projects', {
-    method: 'POST',
-    body: JSON.stringify({ name, description }),
-  });
-  const data: ApiResponse<Project> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to create project');
-  }
-
-  return data.data!;
-}
-
-export async function getProject(id: string): Promise<Project> {
-  const response = await fetchWithAuth(`/api/v1/projects/${id}`);
-  const data: ApiResponse<Project> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch project');
-  }
-
-  return data.data!;
-}
-
-export async function updateProject(id: string, name?: string, description?: string): Promise<Project> {
-  const response = await fetchWithAuth(`/api/v1/projects/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ name, description }),
-  });
-  const data: ApiResponse<Project> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to update project');
-  }
-
-  return data.data!;
-}
-
-export async function deleteProject(id: string): Promise<void> {
-  const response = await fetchWithAuth(`/api/v1/projects/${id}`, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok && response.status !== 204) {
-    const data: ApiResponse<null> = await response.json();
-    throw new Error(data.error?.message || 'Failed to delete project');
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
   }
 }
 
-export async function listDatasets(projectId: string): Promise<Dataset[]> {
-  const response = await fetchWithAuth(`/api/v1/projects/${projectId}/datasets`);
-  const data: ApiResponse<Dataset[]> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch datasets');
+/** Keep error text short and free of stack traces / internals. */
+export function sanitizeError(err: unknown): string {
+  let msg = "";
+  if (typeof err === "string") msg = err;
+  else if (err && typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    msg = String(e.message ?? e.error ?? e.detail ?? "");
   }
-
-  return data.data || [];
+  msg = msg.split("\n")[0].replace(/\s+at\s+.*$/, "").trim();
+  if (!msg) msg = "Ocorreu um erro inesperado.";
+  return msg.length > 200 ? msg.slice(0, 200) + "…" : msg;
 }
 
-export async function uploadDataset(
-  projectId: string,
-  file: File,
-  name?: string
-): Promise<Dataset> {
-  let accessToken: string | null = null;
-  if (supabase) {
-    const { data: { session } } = await supabase.auth.getSession();
-    accessToken = session?.access_token ?? null;
-  }
+type Opts = { method?: string; body?: unknown; form?: FormData; auth?: boolean; signal?: AbortSignal };
 
-  const formData = new FormData();
-  formData.append('file', file);
-  if (name) formData.append('name', name);
-
+export async function requestEnv<T>(path: string, opts: Opts = {}): Promise<{ data: T; meta?: Meta }> {
   const headers: Record<string, string> = {};
-  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-
-  const response = await fetch(`${API_URL}/api/v1/projects/${projectId}/datasets`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
-  const data: ApiResponse<Dataset> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to upload dataset');
+  if (opts.auth !== false) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) headers.Authorization = `Bearer ${token}`;
   }
-
-  return data.data!;
-}
-
-export async function getDataset(datasetId: string): Promise<Dataset> {
-  const response = await fetchWithAuth(`/api/v1/datasets/${datasetId}`);
-  const data: ApiResponse<Dataset> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch dataset');
+  let body: BodyInit | undefined;
+  if (opts.form) body = opts.form;
+  else if (opts.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(opts.body);
   }
-
-  return data.data!;
-}
-
-export async function getDatasetPreview(
-  datasetId: string,
-  limit = 20,
-  offset = 0
-): Promise<DatasetPreview> {
-  const response = await fetchWithAuth(
-    `/api/v1/datasets/${datasetId}/preview?limit=${limit}&offset=${offset}`
-  );
-  const data: ApiResponse<DatasetPreview> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch dataset preview');
+  let res: Response;
+  try {
+    res = await fetch(BASE + path, { method: opts.method ?? "GET", headers, body: body ?? null, signal: opts.signal ?? null });
+  } catch {
+    throw new ApiError("Não foi possível conectar à API. Verifique se o servidor está no ar.", 0);
   }
-
-  return data.data!;
-}
-
-export async function getDatasetProfile(datasetId: string): Promise<DatasetProfile> {
-  const response = await fetchWithAuth(`/api/v1/datasets/${datasetId}/profile`);
-  const data: ApiResponse<DatasetProfile> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch dataset profile');
+  let json: Envelope<T> | null = null;
+  if (res.status !== 204) {
+    try {
+      json = (await res.json()) as Envelope<T>;
+    } catch {
+      json = null;
+    }
   }
-
-  return data.data!;
-}
-
-export async function deleteDataset(datasetId: string): Promise<void> {
-  const response = await fetchWithAuth(`/api/v1/datasets/${datasetId}`, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok && response.status !== 204) {
-    const data: ApiResponse<null> = await response.json();
-    throw new Error(data.error?.message || 'Failed to delete dataset');
+  if (!res.ok || (json && json.success === false)) {
+    const fallback = res.status === 401 ? "Sessão expirada. Faça login novamente." : `Erro ${res.status}`;
+    throw new ApiError(json?.error ? sanitizeError(json.error) : fallback, res.status);
   }
+  return { data: (json?.data ?? (null as T)) as T, meta: json?.meta };
 }
 
-export type ExperimentTaskType = 'regression' | 'classification';
-export type ExperimentStatus = 'pending' | 'running' | 'completed' | 'failed';
-
-export interface Experiment {
-  id: string;
-  projectId: string;
-  datasetId: string;
-  name: string;
-  taskType: ExperimentTaskType;
-  modelType: string;
-  targetColumn: string;
-  featureColumns: string[];
-  config: { testSize: number; randomState: number };
-  status: ExperimentStatus;
-  errorMessage?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  startedAt?: string | null;
-  completedAt?: string | null;
-  latestRun?: ModelRun | null;
+export async function request<T>(path: string, opts: Opts = {}): Promise<T> {
+  return (await requestEnv<T>(path, opts)).data;
 }
 
-export interface ModelRun {
-  id: string;
-  experimentId: string;
-  status: 'running' | 'completed' | 'failed';
-  metrics?: Record<string, unknown> | null;
-  trainSamples?: number | null;
-  testSamples?: number | null;
-  modelParams?: Record<string, unknown> | null;
-  predictionsSummary?: {
-    count: number;
-    actualMean?: number | null;
-    predictedMean?: number | null;
-    sample: (number | string)[][];
-  } | null;
-  trainSeconds?: number | null;
-  libraryVersions?: Record<string, string> | null;
-  errorMessage?: string | null;
-  createdAt: string;
-  completedAt?: string | null;
+/* ---------- types (loose: backend may use camelCase or snake_case) ---------- */
+type Loose = Record<string, unknown>;
+export type Project = Loose & { id: string; name: string; description?: string | null };
+export type Dataset = Loose & { id: string; name?: string; status?: string };
+export type Experiment = Loose & { id: string; name?: string };
+export type Run = Loose & { id: string; metrics?: Loose; status?: string };
+export type Analysis = Loose & { id: string; analysisType?: string };
+export type Job = Loose & { id: string; status: JobStatus; progress?: number; stage?: string };
+export type JobStatus = "queued" | "active" | "completed" | "failed" | "cancelled";
+
+export const TERMINAL: JobStatus[] = ["completed", "failed", "cancelled"];
+
+export function pick<T = unknown>(obj: unknown, ...keys: string[]): T | undefined {
+  if (!obj || typeof obj !== "object") return undefined;
+  const o = obj as Loose;
+  for (const k of keys) if (o[k] !== undefined && o[k] !== null) return o[k] as T;
+  return undefined;
 }
 
-export interface CreateExperimentInput {
-  projectId: string;
-  datasetId: string;
-  name?: string;
-  taskType: ExperimentTaskType;
-  modelType: string;
-  targetColumn: string;
-  featureColumns: string[];
-  testSize?: number;
-  randomState?: number;
-}
+export const createdAt = (o: unknown) => pick<string>(o, "createdAt", "created_at");
 
-export const REGRESSION_MODELS = ['linear_regression', 'random_forest_regressor'];
-export const CLASSIFICATION_MODELS = ['logistic_regression', 'random_forest_classifier'];
-
-export async function createExperiment(input: CreateExperimentInput): Promise<Experiment> {
-  const response = await fetchWithAuth('/api/v1/experiments', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  const data: ApiResponse<Experiment> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to create experiment');
+export function asList<T>(d: unknown): T[] {
+  if (Array.isArray(d)) return d as T[];
+  if (d && typeof d === "object") {
+    const v = pick<unknown>(d, "items", "data", "results", "rows");
+    if (Array.isArray(v)) return v as T[];
   }
-
-  return data.data!;
+  return [];
 }
 
-export async function listExperiments(projectId: string): Promise<Experiment[]> {
-  const response = await fetchWithAuth(`/api/v1/projects/${projectId}/experiments`);
-  const data: ApiResponse<Experiment[]> = await response.json();
+/* ---------- endpoints ---------- */
+const q = (p: Record<string, string | number | undefined>) => {
+  const s = new URLSearchParams();
+  Object.entries(p).forEach(([k, v]) => v !== undefined && v !== "" && s.set(k, String(v)));
+  const str = s.toString();
+  return str ? `?${str}` : "";
+};
 
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch experiments');
-  }
+export const api = {
+  health: () => request<unknown>("/health", { auth: false }),
 
-  return data.data || [];
+  listProjects: () => request<unknown>("/projects").then(asList<Project>),
+  getProject: (id: string) => request<Project>(`/projects/${id}`),
+  createProject: (b: { name: string; description: string }) =>
+    request<Project>("/projects", { method: "POST", body: b }),
+  updateProject: (id: string, b: { name: string; description: string }) =>
+    request<Project>(`/projects/${id}`, { method: "PATCH", body: b }),
+  deleteProject: (id: string) => request<unknown>(`/projects/${id}`, { method: "DELETE" }),
+
+  uploadDataset: (projectId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<Dataset>(`/projects/${projectId}/datasets`, { method: "POST", form });
+  },
+  listDatasets: (projectId: string) => request<unknown>(`/projects/${projectId}/datasets`).then(asList<Dataset>),
+  getDataset: (id: string) => request<Dataset>(`/datasets/${id}`),
+  previewDataset: (id: string, limit: number, offset: number) =>
+    requestEnv<unknown>(`/datasets/${id}/preview${q({ limit, offset })}`),
+  profileDataset: (id: string) => request<unknown>(`/datasets/${id}/profile`),
+  deleteDataset: (id: string) => request<unknown>(`/datasets/${id}`, { method: "DELETE" }),
+
+  createExperiment: (b: Loose) => request<Experiment>("/experiments", { method: "POST", body: b }),
+  listExperiments: (projectId: string) =>
+    request<unknown>(`/projects/${projectId}/experiments`).then(asList<Experiment>),
+  getExperiment: (id: string) => request<Experiment>(`/experiments/${id}`),
+  listRuns: (id: string) => request<unknown>(`/experiments/${id}/runs`).then(asList<Run>),
+  runExperiment: (id: string) => request<unknown>(`/experiments/${id}/run`, { method: "POST" }),
+  deleteExperiment: (id: string) => request<unknown>(`/experiments/${id}`, { method: "DELETE" }),
+
+  createAnalysis: (projectId: string, b: Loose) =>
+    request<Analysis>(`/projects/${projectId}/analyses`, { method: "POST", body: b }),
+  listAnalyses: (projectId: string) =>
+    request<unknown>(`/projects/${projectId}/analyses`).then(asList<Analysis>),
+  getAnalysis: (id: string) => request<Analysis>(`/analyses/${id}`),
+  deleteAnalysis: (id: string) => request<unknown>(`/analyses/${id}`, { method: "DELETE" }),
+
+  createJob: (b: Loose) => request<Job>("/jobs", { method: "POST", body: b }),
+  listJobs: (p: { page?: number; limit?: number; status?: string; jobType?: string; projectId?: string }) =>
+    requestEnv<unknown>(`/jobs${q(p)}`).then((r) => ({ items: asList<Job>(r.data), meta: r.meta ?? (r.data as Meta) })),
+  getJob: (id: string) => request<Job>(`/jobs/${id}`),
+  cancelJob: (id: string) => request<unknown>(`/jobs/${id}/cancel`, { method: "POST" }),
+};
+
+/** Backoff polling interval for TanStack Query; stops on terminal status. */
+export function jobPollInterval(status: string | undefined, updates: number): number | false {
+  if (status && TERMINAL.includes(status as JobStatus)) return false;
+  return Math.min(1000 * Math.pow(1.5, updates), 10000);
 }
 
-export async function getExperiment(experimentId: string): Promise<Experiment> {
-  const response = await fetchWithAuth(`/api/v1/experiments/${experimentId}`);
-  const data: ApiResponse<Experiment> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch experiment');
-  }
-
-  return data.data!;
+export function fmtDate(s?: string) {
+  if (!s) return "—";
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-export async function listExperimentRuns(experimentId: string): Promise<ModelRun[]> {
-  const response = await fetchWithAuth(`/api/v1/experiments/${experimentId}/runs`);
-  const data: ApiResponse<ModelRun[]> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch runs');
-  }
-
-  return data.data || [];
-}
-
-export async function runExperiment(experimentId: string): Promise<Experiment> {
-  const response = await fetchWithAuth(`/api/v1/experiments/${experimentId}/run`, {
-    method: 'POST',
-  });
-  const data: ApiResponse<Experiment> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to run experiment');
-  }
-
-  return data.data!;
-}
-
-export async function deleteExperiment(experimentId: string): Promise<void> {
-  const response = await fetchWithAuth(`/api/v1/experiments/${experimentId}`, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok && response.status !== 204) {
-    const data: ApiResponse<null> = await response.json();
-    throw new Error(data.error?.message || 'Failed to delete experiment');
-  }
-}
-
-export type AnalysisType =
-  | 'describe'
-  | 'correlation'
-  | 'covariance'
-  | 'linear_algebra'
-  | 'compare';
-
-export interface AnalysisRun {
-  id: string;
-  projectId: string;
-  datasetId: string;
-  analysisType: AnalysisType;
-  engine: 'julia' | 'python' | 'comparison';
-  config: {
-    columns?: string[];
-    missingPolicy?: string;
-    maxRows?: number;
-  };
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  result?: Record<string, unknown> | null;
-  errorMessage?: string | null;
-  createdAt: string;
-  completedAt?: string | null;
-}
-
-export interface RunAnalysisInput {
-  datasetId: string;
-  analysisType: AnalysisType;
-  columns?: string[];
-  missingPolicy?: 'pairwise' | 'listwise';
-  maxRows?: number;
-}
-
-export async function runAnalysis(
-  projectId: string,
-  input: RunAnalysisInput
-): Promise<AnalysisRun> {
-  const response = await fetchWithAuth(`/api/v1/projects/${projectId}/analyses`, {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  const data: ApiResponse<AnalysisRun> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to run analysis');
-  }
-
-  return data.data!;
-}
-
-export async function listAnalyses(projectId: string): Promise<AnalysisRun[]> {
-  const response = await fetchWithAuth(`/api/v1/projects/${projectId}/analyses`);
-  const data: ApiResponse<AnalysisRun[]> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch analyses');
-  }
-
-  return data.data || [];
-}
-
-export async function getAnalysis(analysisId: string): Promise<AnalysisRun> {
-  const response = await fetchWithAuth(`/api/v1/analyses/${analysisId}`);
-  const data: ApiResponse<AnalysisRun> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch analysis');
-  }
-
-  return data.data!;
-}
-
-export async function deleteAnalysis(analysisId: string): Promise<void> {
-  const response = await fetchWithAuth(`/api/v1/analyses/${analysisId}`, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok && response.status !== 204) {
-    const data: ApiResponse<null> = await response.json();
-    throw new Error(data.error?.message || 'Failed to delete analysis');
-  }
-}
-
-export type JobType =
-  | 'dataset.profile'
-  | 'ml.train'
-  | 'analysis.describe'
-  | 'analysis.correlation'
-  | 'analysis.covariance'
-  | 'analysis.linear-algebra'
-  | 'analysis.compare';
-
-export type JobStatus =
-  | 'queued'
-  | 'active'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-  | 'cancel_requested';
-
-const TERMINAL_JOB_STATUSES: JobStatus[] = ['completed', 'failed', 'cancelled'];
-
-export function isTerminalJobStatus(status: JobStatus): boolean {
-  return TERMINAL_JOB_STATUSES.includes(status);
-}
-
-export interface Job {
-  id: string;
-  userId: string;
-  projectId?: string | null;
-  datasetId?: string | null;
-  jobType: JobType;
-  status: JobStatus;
-  params: Record<string, unknown>;
-  progress: number;
-  stage?: string | null;
-  result?: Record<string, unknown> | null;
-  errorCode?: string | null;
-  errorMessage?: string | null;
-  attempts: number;
-  maxAttempts: number;
-  createdAt: string;
-  updatedAt: string;
-  startedAt?: string | null;
-  completedAt?: string | null;
-}
-
-export interface CreateJobInput {
-  jobType: JobType;
-  projectId: string;
-  datasetId: string;
-  [key: string]: unknown;
-}
-
-export interface JobsPage {
-  jobs: Job[];
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-}
-
-export async function createJob(input: CreateJobInput): Promise<Job> {
-  const response = await fetchWithAuth(`/api/v1/jobs`, {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  const data: ApiResponse<Job> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to create job');
-  }
-
-  return data.data!;
-}
-
-export async function listJobs(page = 1, limit = 20, projectId?: string): Promise<JobsPage> {
-  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-  if (projectId) params.set('projectId', projectId);
-  const response = await fetchWithAuth(`/api/v1/jobs?${params.toString()}`);
-  const data: ApiResponse<JobsPage> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch jobs');
-  }
-
-  return data.data!;
-}
-
-export async function getJob(jobId: string): Promise<Job> {
-  const response = await fetchWithAuth(`/api/v1/jobs/${jobId}`);
-  const data: ApiResponse<Job> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to fetch job');
-  }
-
-  return data.data!;
-}
-
-export async function cancelJob(jobId: string): Promise<Job> {
-  const response = await fetchWithAuth(`/api/v1/jobs/${jobId}/cancel`, {
-    method: 'POST',
-  });
-  const data: ApiResponse<Job> = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error?.message || 'Failed to cancel job');
-  }
-
-  return data.data!;
+export function fmtNum(v: unknown, digits = 4) {
+  if (typeof v !== "number" || !isFinite(v)) return v === null || v === undefined ? "—" : String(v);
+  return Math.abs(v) >= 1000 ? v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : Number(v.toFixed(digits)).toString();
 }

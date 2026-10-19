@@ -73,7 +73,7 @@
 | **Worker** | Mesmas da API |
 | **ML Python** | `ML_SERVICE_KEY` (deve bater com API) |
 | **Statistics Julia** | `JULIA_SERVICE_KEY` (deve bater com API) |
-| **Web** | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| **Web** | `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` |
 
 ### Health Checks
 | Serviço | Path | Porta |
@@ -138,7 +138,7 @@ docker build -t nexusai-web -f apps/web/Dockerfile .
 - [ ] Copiar TODAS as variáveis `sync: false` do `render.yaml` para cada serviço
 - [ ] Garantir que `ML_SERVICE_KEY`, `JULIA_SERVICE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` sejam **idênticas** entre API/Worker/ML/Julia
 - [ ] `CORS_ORIGIN` = URL do Web service (ex: `https://nexusai-web.onrender.com`)
-- [ ] `NEXT_PUBLIC_API_URL` = URL do API service (ex: `https://nexusai-api.onrender.com`)
+- [ ] `VITE_API_URL` = URL do API service (ex: `https://nexusai-api.onrender.com`)
 
 ### 4. Deploy e Validação
 - [ ] Deploy na ordem: ML → Julia → API → Worker → Web

@@ -1,49 +1,32 @@
 # NexusAI Web — Docker ignore patterns
 
-# Dependencies
 node_modules/
-.pnpm-store/
+.output/
+dist/
 
-# Next.js build output (handled by standalone)
-.next/
-out/
-
-# TypeScript build info
 *.tsbuildinfo
 
-# Environment files
 .env
 .env.local
 .env.*.local
 
-# Logs
 *.log
 npm-debug.log*
-pnpm-debug.log*
 
-# Testing
 coverage/
 .nyc_output/
 
-# IDE
 .vscode/
 .idea/
 *.swp
-*.swo
 
-# OS
 .DS_Store
-Thumbs.db
 
-# Git
 .git/
 .gitignore
 
-# Docker
 Dockerfile
 .dockerignore
-docker-compose*.yml
 
-# Documentation
 *.md
 !README.md

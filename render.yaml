@@ -224,7 +224,7 @@ services:
     # Private service recommended
 
   # ============================================
-  # 6. WEB — Next.js Frontend (Web Service)
+  # 6. WEB — TanStack Start Frontend (Web Service)
   # ============================================
   - type: web
     name: nexusai-web
@@ -234,23 +234,15 @@ services:
     dockerContext: .
     envVars:
       # API URL — MUST match the deployed API service URL
-      - key: NEXT_PUBLIC_API_URL
+      - key: VITE_API_URL
         value: https://nexusai-api.onrender.com
-      - key: NEXT_PUBLIC_API_VERSION
-        value: v1
       # Supabase Auth — REQUIRED (same as API)
-      - key: NEXT_PUBLIC_SUPABASE_URL
+      - key: VITE_SUPABASE_URL
         sync: false
         # Set in dashboard: https://your-project-ref.supabase.co
-      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+      - key: VITE_SUPABASE_ANON_KEY
         sync: false
         # Set in dashboard: anon key from Supabase
-      - key: NEXT_PUBLIC_APP_NAME
-        value: NexusAI
-      - key: NEXT_PUBLIC_APP_VERSION
-        value: 0.2.0
-      - key: NEXT_PUBLIC_APP_DESCRIPTION
-        value: "Plataforma de Análise de Dados e Machine Learning"
     healthCheckPath: /
     autoDeploy: false
 

@@ -20,7 +20,7 @@
 2. No Dashboard do projeto, vá em **Settings > API**
 3. Copie:
    - **Project URL** → `SUPABASE_URL`
-   - **anon public** → `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - **anon public** → `SUPABASE_ANON_KEY` / `VITE_SUPABASE_ANON_KEY` (frontend)
    - **service_role** → `SUPABASE_SERVICE_ROLE_KEY`
 4. Vá em **Settings > Database** → **Connection string** (URI)
    - Use a string "Transaction pooler" (porta 6543)
@@ -55,11 +55,13 @@ SUPABASE_ANON_KEY=sua_anon_key
 SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
 ```
 
-### Frontend (apps/web/.env.local)
+### Frontend (apps/web/.env)
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://SEU_REF.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_anon_key
+VITE_API_URL=http://localhost:3001
+VITE_SUPABASE_URL=https://SEU_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=sua_anon_key
 ```
+O frontend atual é o TanStack Start em `apps/web` (porta 3000, mesma do `CORS_ORIGIN` do backend).
 
 ### ML Python (services/ml-python/.env)
 ```bash
@@ -131,10 +133,10 @@ npm run worker --workspace=apps/api
 # Conecta no Redis e processa fila
 ```
 
-### Terminal 3 - Frontend
+### Terminal 3 - Frontend (novo, TanStack Start em apps/web)
 ```bash
 npm run dev --workspace=apps/web
-# Roda em http://localhost:3000
+# Roda em http://localhost:3000 (porta fixa no script dev)
 ```
 
 ### Terminal 4 - ML Python (Opcional - para treinamento)

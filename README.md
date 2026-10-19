@@ -19,7 +19,7 @@ Esta versão adiciona **persistência real, autenticação e gerenciamento de pr
 | Componente | Status | Detalhes |
 |------------|--------|----------|
 | **Monorepo** | ✅ | npm workspaces com `apps/web`, `apps/api`, `packages/shared` |
-| **Frontend (Next.js 14)** | ✅ | App Router, TypeScript strict, Tailwind CSS, tema escuro |
+| **Frontend (TanStack Start)** | ✅ | File-based routing, React Query, Tailwind + shadcn, tema escuro |
 | **Backend (Express)** | ✅ | TypeScript, Zod, Helmet, CORS, error handling centralizado |
 | **Health Checks** | ✅ | `GET /api/v1/health` (liveness) e `GET /api/v1/health/ready` (readiness) |
 | **Shared Package** | ✅ | Tipos TypeScript compartilhados (API responses, health, pagination, projects, auth) |
@@ -89,39 +89,11 @@ Dashboard avançado, visualizações e polimento de produto — experiência Saa
 ```
 nexusai/
 ├── apps/
-│   ├── web/           # Next.js 14 (App Router) - Frontend
+│   ├── web/           # TanStack Start (React + Vite) - Frontend
 │   │   ├── src/
-│   │   │   ├── app/           # Rotas (App Router)
-│   │   │   │   ├── page.tsx                    # Landing / Dashboard
-│   │   │   │   ├── jobs/page.tsx               # Central de execuções
-│   │   │   │   ├── projects/page.tsx           # Lista de projetos
-│   │   │   │   ├── projects/[projectId]/page.tsx           # Detalhe do projeto
-│   │   │   │   ├── projects/[projectId]/datasets/[datasetId]/page.tsx  # Dataset
-│   │   │   │   ├── projects/[projectId]/experiments/[experimentId]/page.tsx  # Experimento
-│   │   │   │   └── auth/                       # Login, signup, password reset
-│   │   │   ├── components/
-│   │   │   │   ├── AppShell.tsx                # Layout autenticado (sidebar/drawer)
-│   │   │   │   ├── Navigation.tsx              # Header público (landing/auth)
-│   │   │   │   ├── ui.tsx                      # Componentes base (StatCard, StatusBadge, Skeleton, Breadcrumbs, Pagination, ErrorAlert)
-│   │   │   │   ├── ScatterPlot.tsx             # Scatter plot com divulgação de amostragem
-│   │   │   │   ├── ConfusionHeatmap.tsx        # Matriz de confusão acessível
-│   │   │   │   ├── RunsComparison.tsx          # Comparação de runs por tarefa
-│   │   │   │   ├── JobsPanel.tsx               # Histórico de jobs com paginação/cancelamento
-│   │   │   │   ├── AnalysisPanel.tsx           # Painel de análises (sync + background)
-│   │   │   │   ├── ProjectCard.tsx             # Card de projeto
-│   │   │   │   ├── ProjectForm.tsx             # Modal de criação/edição de projeto
-│   │   │   │   ├── UploadDatasetModal.tsx      # Modal de upload de CSV
-│   │   │   │   ├── ExperimentFormModal.tsx     # Modal de criação de experimento
-│   │   │   │   ├── DeleteConfirmModal.tsx      # Confirmação de exclusão
-│   │   │   │   └── EmptyState.tsx              # Estado vazio com ação opcional
-│   │   │   ├── context/AuthContext.tsx         # Provê usuário + signOut
-│   │   │   ├── lib/
-│   │   │   │   ├── api.ts                      # Cliente API tipado (fetch wrapper)
-│   │   │   │   ├── format.ts                   # Helpers de formatação compartilhados
-│   │   │   │   ├── charts.ts                   # Builders puros de dados de gráficos (testáveis)
-│   │   │   │   ├── useDashboardData.ts         # Hook de agregação do dashboard
-│   │   │   │   └── useJobPolling.ts            # Polling com backoff para jobs
-│   │   │   └── styles/globals.css              # Tailwind + design tokens
+│   │   │   ├── routes/          # Rotas file-based (/, /projects, /projects/$projectId, /jobs, /auth/*)
+│   │   │   ├── components/      # AppShell, ui (shadcn), states, heatmap, dialogs
+│   │   │   └── lib/             # api.ts (cliente da API :3001), auth (Supabase), supabase
 │   └── api/           # Express + TypeScript - Backend API
 ├── packages/
 │   └── shared/        # Tipos e contratos TypeScript compartilhados
@@ -170,13 +142,11 @@ Detalhes em [`docs/architecture.md`](docs/architecture.md).
 git clone <repository-url>
 cd nexusai
 
-# Instale dependências de todo o monorepo
+# Instale dependências de todo o monorepo (apps/api, apps/web, packages/shared)
 npm install
 
-# Configure variáveis de ambiente
-cp .env.example .env
-cp apps/web/.env.example apps/web/.env.local
-# Edite os arquivos .env conforme necessário
+# Configure variáveis de ambiente (já existem templates; preencha o bloco Supabase)
+# .env + apps/api/.env (backend) | apps/web/.env (frontend VITE_*) | services/*/.env
 ```
 
 ## ⚙️ Configuração do Supabase
@@ -198,11 +168,12 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 DATABASE_URL=postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
 ```
 
-No arquivo `apps/web/.env.local` (frontend):
+No arquivo `apps/web/.env` (frontend TanStack Start):
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+VITE_API_URL=http://localhost:3001
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 ### 3. Aplicar Migrações
@@ -235,18 +206,15 @@ Isso criará as tabelas `profiles` e `projects` com as políticas de Row Level S
 | `SUPABASE_ANON_KEY` | Sim | — | Chave anônima do Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Não | — | Chave de serviço (apenas backend) |
 
-### Frontend (`apps/web/.env.local`)
+### Frontend (`apps/web/.env`, prefixo `VITE_`)
 
 | Variável | Obrigatória | Padrão | Descrição |
 |----------|-------------|--------|-----------|
-| `NEXT_PUBLIC_API_URL` | Sim | `http://localhost:3001` | URL base da API |
-| `NEXT_PUBLIC_API_VERSION` | Não | `v1` | Versão da API |
-| `NEXT_PUBLIC_SUPABASE_URL` | Sim | — | URL do projeto Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Sim | — | Chave anônima do Supabase |
-| `NEXT_PUBLIC_APP_NAME` | Não | `NexusAI` | Nome da aplicação |
-| `NEXT_PUBLIC_APP_VERSION` | Não | `0.2.0` | Versão do app |
+| `VITE_API_URL` | Sim | `http://localhost:3001` | URL base da API |
+| `VITE_SUPABASE_URL` | Sim | — | URL do projeto Supabase |
+| `VITE_SUPABASE_ANON_KEY` | Sim | — | Chave anônima do Supabase |
 
-> **Importante**: Apenas variáveis com prefixo `NEXT_PUBLIC_` são expostas ao navegador. Nunca coloque segredos nelas.
+> **Importante**: Apenas variáveis com prefixo `VITE_` são expostas ao navegador. Nunca coloque segredos nelas.
 
 ### Jobs assíncronos (backend)
 
