@@ -32,6 +32,7 @@ RUN julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 FROM base AS runner
 
 COPY --from=deps /srv/stats/.julia /srv/stats/.julia
+COPY Project.toml Manifest.toml ./
 COPY src ./src
 
 # Create non-root user
