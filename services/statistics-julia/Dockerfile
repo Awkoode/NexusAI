@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM base AS deps
 
 COPY Project.toml Manifest.toml ./
+COPY src ./src
 RUN julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
 # ============================================
