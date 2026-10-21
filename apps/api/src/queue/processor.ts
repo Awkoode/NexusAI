@@ -147,6 +147,12 @@ async function processTrainJob(
     });
     experimentId = created.id;
   }
+  if (!experimentId) {
+  throw AppError.badRequest(
+    'VALIDATION_ERROR',
+    'Missing experiment ID'
+  );
+}
 
   const experiment = await experimentRepo.getExperiment(experimentId);
   if (!experiment) {
